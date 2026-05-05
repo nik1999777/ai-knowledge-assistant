@@ -1,0 +1,43 @@
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { MultipartFile } from "@fastify/multipart";
+
+import { createAppError } from "../../utils/app-error.js";
+import { deleteDocument } from "./document-delete.service.js";
+import { ingestUploadedDocument } from "./document-ingest.service.js";
+import { getDocumentDetail, getDocuments } from "./document-query.service.js";
+import { documentParamsSchema, documentsQuerySchema } from "./documents.schemas.js";
+
+export async function registerDocumentRoutes(app: FastifyInstance) {
+  app.post("/ingest/upload", async (request: FastifyRequest) => {
+    const file = await (request as FastifyRequest & {
+      file: () => Promise<MultipartFile | undefined>;
+    }).file();
+
+    if (!file) {
+      throw createAppError(400, "Файл обязателен");
+    }
+
+    const buffer = await file.toBuffer();
+
+    return ingestUploadedDocument({
+      fileName: file.filename,
+      mimeType: file.mimetype,
+      buffer,
+    });
+  });
+
+  app.get("/documents", async (request: FastifyRequest) => {
+    const query = documentsQuerySchema.parse(request.query);
+    return getDocuments(query);
+  });
+
+  app.get("/documents/:docId", async (request: FastifyRequest) => {
+    const params = documentParamsSchema.parse(request.params);
+    return getDocumentDetail(params.docId);
+  });
+
+  app.delete("/documents/:docId", async (request: FastifyRequest) => {
+    const params = documentParamsSchema.parse(request.params);
+    return deleteDocument(params.docId);
+  });
+}
