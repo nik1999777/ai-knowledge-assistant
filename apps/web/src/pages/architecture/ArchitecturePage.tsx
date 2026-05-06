@@ -3,7 +3,14 @@ import styled from "styled-components";
 import { AppHeader } from "../../shared/components/AppHeader";
 import { Layout } from "../../shared/components/Layout";
 
-type ViewId = "pipeline" | "retrieval" | "eval" | "storage" | "api" | "debug";
+type ViewId =
+  | "pipeline"
+  | "retrieval"
+  | "eval"
+  | "storage"
+  | "api"
+  | "debug"
+  | "glossary";
 type TraceId = "question" | "decline" | "ingestion" | "seed_eval";
 type StageId =
   | "upload"
@@ -29,6 +36,13 @@ type TraceStep = {
   title: string;
   description: string;
   files: string[];
+};
+
+type GlossaryItem = {
+  term: string;
+  short: string;
+  projectMeaning: string;
+  example: string;
 };
 
 const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
@@ -61,6 +75,11 @@ const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
     id: "debug",
     title: "Debug",
     subtitle: "Как читать ответ",
+  },
+  {
+    id: "glossary",
+    title: "Glossary",
+    subtitle: "Термины простым языком",
   },
 ];
 
@@ -399,16 +418,162 @@ const DECISION_TREE = [
   "Иначе answered, но debug остается доступным для проверки.",
 ];
 
+const SYSTEM_SUMMARY = [
+  {
+    title: "Что строим",
+    body: "Локальный помощник по знаниям. Он не ищет в интернете, а отвечает по документам, которые пользователь загрузил в проект.",
+  },
+  {
+    title: "Почему это RAG",
+    body: "Перед ответом система сначала достает релевантные фрагменты документов, а уже потом передает их LLM. Это снижает галлюцинации и делает ответ проверяемым.",
+  },
+  {
+    title: "Где живут знания",
+    body: "Полный текст, metadata, история чата и lexical index лежат в Postgres. Embeddings chunk-ов лежат в Qdrant. Модели запускаются локально через Ollama.",
+  },
+  {
+    title: "Как понять ответ",
+    body: "У каждого ответа есть sources, timing и debug. Sources показывают grounding, timing показывает скорость, debug объясняет decision и качество retrieval.",
+  },
+];
+
+const GLOSSARY: GlossaryItem[] = [
+  {
+    term: "RAG",
+    short: "Retrieval-Augmented Generation: генерация ответа с предварительным поиском контекста.",
+    projectMeaning:
+      "В нашем проекте вопрос сначала ищет chunk-и в Postgres/Qdrant, затем эти chunk-и вставляются в prompt для Ollama `llama3`.",
+    example:
+      "Если спросить про RRF, модель получает найденные фрагменты документа про retrieval и отвечает по ним, а не только из своей памяти.",
+  },
+  {
+    term: "Chunk",
+    short: "Небольшой фрагмент документа.",
+    projectMeaning:
+      "Backend режет документ на chunk-и, потому что искать и передавать в prompt весь PDF целиком дорого и неточно.",
+    example:
+      "Документ на 20 страниц может стать набором chunk-ов с `chunkIndex`, `chunkLen` и `section`.",
+  },
+  {
+    term: "Embedding",
+    short: "Числовой вектор, который описывает смысл текста.",
+    projectMeaning:
+      "Ollama `nomic-embed-text` превращает вопрос и chunk-и в vectors. Qdrant сравнивает эти vectors по похожести.",
+    example:
+      "Вопрос `что делает Qdrant` будет близок к chunk-у, где написано про vector database, даже если слова не совпали идеально.",
+  },
+  {
+    term: "Vector Search",
+    short: "Поиск по смысловой близости embeddings.",
+    projectMeaning:
+      "Qdrant возвращает top-K chunk-ов, похожих на embedding вопроса, и сразу фильтрует их по `documentScope`.",
+    example:
+      "`vectorRank=#1` значит Qdrant поставил source первым среди vector candidates.",
+  },
+  {
+    term: "Lexical Search / FTS",
+    short: "Поиск по словам и токенам.",
+    projectMeaning:
+      "Postgres `search_vector` ищет точные или близкие совпадения слов. Это помогает ловить названия, поля и редкие термины.",
+    example:
+      "Если вопрос содержит `finalStatusModels`, lexical search часто полезнее vector search.",
+  },
+  {
+    term: "Hybrid Retrieval",
+    short: "Комбинация semantic и lexical поиска.",
+    projectMeaning:
+      "Мы используем Qdrant + Postgres FTS, затем объединяем кандидатов через RRF.",
+    example:
+      "`origin=hybrid` значит один и тот же chunk нашли оба механизма.",
+  },
+  {
+    term: "RRF",
+    short: "Reciprocal Rank Fusion: способ объединить несколько ranked lists.",
+    projectMeaning:
+      "RRF смотрит на позиции кандидата в vector и lexical списках. Высокое место в обоих списках дает сильный общий сигнал.",
+    example:
+      "Chunk с `vectorRank=#1` и `lexicalRank=#1` получает `rrfScore=1.000`.",
+  },
+  {
+    term: "Rerank",
+    short: "Дополнительная сортировка кандидатов после первичного поиска.",
+    projectMeaning:
+      "После RRF мы добавляем локальные сигналы: overlap слов, совпадение title/section, phrase bonus и penalty для слишком коротких chunk-ов.",
+    example:
+      "`finalScore` может стать выше, если chunk содержит точную фразу вопроса.",
+  },
+  {
+    term: "Grounding",
+    short: "Привязка ответа модели к найденным источникам.",
+    projectMeaning:
+      "Prompt просит LLM отвечать только на основе retrieved context. UI показывает sources, чтобы ответ можно было проверить.",
+    example:
+      "Если sources пустые или слабые, система должна отказаться, а не придумывать.",
+  },
+  {
+    term: "Decision Policy",
+    short: "Правила, которые решают, отвечать или отказаться.",
+    projectMeaning:
+      "Policy смотрит на `bestScore`, thresholds, `domainEvidence` и наличие sources.",
+    example:
+      "`guardrailReason=score_below_decline_threshold` значит лучший source оказался слишком слабым.",
+  },
+  {
+    term: "documentScope",
+    short: "Разделение документов по назначению.",
+    projectMeaning:
+      "`user` используется обычным чатом и страницей Documents. `eval` используется стабильным seed benchmark.",
+    example:
+      "Seed documents не должны всплывать в обычном чате пользователя.",
+  },
+  {
+    term: "SSE",
+    short: "Server-Sent Events: поток данных от backend к frontend.",
+    projectMeaning:
+      "Ответ LLM приходит по частям, поэтому пользователь видит генерацию сразу, а не ждет полный ответ.",
+    example:
+      "Backend стримит text chunks, а в конце отправляет meta с sources/timing/debug.",
+  },
+  {
+    term: "Eval",
+    short: "Набор проверочных вопросов и отчет о качестве.",
+    projectMeaning:
+      "`eval:seed` проверяет стабильный benchmark, а `eval:current` проверяет текущую user базу.",
+    example:
+      "`fp=0` значит система не ответила там, где должна была отказаться.",
+  },
+];
+
+const DEBUG_EXAMPLE = [
+  ["origin=hybrid", "Chunk найден и Qdrant, и Postgres FTS. Обычно это самый доверенный сигнал."],
+  ["vectorRank=#1 / 0.649", "Qdrant поставил chunk первым, raw vector score около 0.649."],
+  ["lexicalRank=#1 / 0.825", "Lexical pipeline тоже поставил chunk первым, raw lexical score около 0.825."],
+  ["rrfScore=1.000", "Оба ранга первые, поэтому RRF дает максимальный fusion signal."],
+  ["finalScore=0.911", "Итог после RRF + local rerank. Этот score участвует в bestScore."],
+];
+
+const EVAL_READING_GUIDE = [
+  ["TP", "Вопрос был answerable, система ответила. Это правильное поведение."],
+  ["TN", "Вопрос был unanswerable, система отказалась. Это тоже правильное поведение."],
+  ["FP", "Вопрос был unanswerable, но система ответила. Это самый опасный тип ошибки для RAG."],
+  ["FN", "Вопрос был answerable, но система отказалась. Это раздражает пользователя, но обычно безопаснее FP."],
+  ["answerKeywordHit", "Проверяет, есть ли ожидаемые слова в финальном answer."],
+  ["sourceKeywordHit", "Проверяет, что retrieval достал source с нужными evidence словами."],
+];
+
 export function ArchitecturePage() {
   const [activeView, setActiveView] = useState<ViewId>("pipeline");
   const [selectedStageId, setSelectedStageId] = useState<StageId>("retrieve");
   const [selectedTraceId, setSelectedTraceId] = useState<TraceId>("question");
+  const [selectedTerm, setSelectedTerm] = useState(GLOSSARY[0].term);
 
   const selectedStage = useMemo(
     () => STAGES.find((stage) => stage.id === selectedStageId) ?? STAGES[0],
     [selectedStageId],
   );
   const selectedTrace = TRACES[selectedTraceId];
+  const activeTerm =
+    GLOSSARY.find((item) => item.term === selectedTerm) ?? GLOSSARY[0];
 
   return (
     <Layout>
@@ -423,6 +588,14 @@ export function ArchitecturePage() {
           вспомнить, что происходит с документом, вопросом, source score и eval
           report.
         </Subtitle>
+        <SummaryGrid>
+          {SYSTEM_SUMMARY.map((item) => (
+            <SummaryItem key={item.title}>
+              <SummaryLabel>{item.title}</SummaryLabel>
+              <SummaryText>{item.body}</SummaryText>
+            </SummaryItem>
+          ))}
+        </SummaryGrid>
       </Intro>
 
       <NavGrid>
@@ -510,6 +683,12 @@ export function ArchitecturePage() {
         <>
           <Section>
             <SectionTitle>Retrieval сейчас</SectionTitle>
+            <LeadText>
+              Retrieval отвечает на вопрос: какие куски документов стоит показать
+              модели перед генерацией. Важно не просто найти похожий текст, а
+              собрать доказательный контекст: точные термины, смысловую близость,
+              корректный scope и устойчивый порядок кандидатов.
+            </LeadText>
             <TwoColumn>
               <InfoPanel>
                 <BlockTitle>Почему hybrid</BlockTitle>
@@ -533,6 +712,17 @@ finalScore = localRerank(score)`}
             </TwoColumn>
           </Section>
           <Section>
+            <SectionTitle>Как читать один source</SectionTitle>
+            <ExampleStrip>
+              {DEBUG_EXAMPLE.map(([field, explanation]) => (
+                <ExampleItem key={field}>
+                  <ExampleKey>{field}</ExampleKey>
+                  <Text>{explanation}</Text>
+                </ExampleItem>
+              ))}
+            </ExampleStrip>
+          </Section>
+          <Section>
             <SectionTitle>Decision tree</SectionTitle>
             <DecisionList>
               {DECISION_TREE.map((item, index) => (
@@ -549,8 +739,24 @@ finalScore = localRerank(score)`}
       {activeView === "eval" ? (
         <Section>
           <SectionTitle>Eval Lab</SectionTitle>
+          <LeadText>
+            Eval нужен не для красивой цифры, а для защиты от регрессий. Когда мы
+            меняем retrieval, prompt или thresholds, один субъективный ручной
+            вопрос не доказывает, что система стала лучше. Seed benchmark дает
+            стабильный минимум: answerable вопросы должны получать ответ, а
+            unanswerable вопросы должны получать отказ.
+          </LeadText>
           <Grid>
             {EVAL_FACTS.map(([title, body]) => (
+              <InfoPanel key={title}>
+                <BlockTitle>{title}</BlockTitle>
+                <Text>{body}</Text>
+              </InfoPanel>
+            ))}
+          </Grid>
+          <SubsectionTitle>Как читать confusion matrix</SubsectionTitle>
+          <Grid>
+            {EVAL_READING_GUIDE.map(([title, body]) => (
               <InfoPanel key={title}>
                 <BlockTitle>{title}</BlockTitle>
                 <Text>{body}</Text>
@@ -623,6 +829,12 @@ finalScore = localRerank(score)`}
         <>
           <Section>
             <SectionTitle>Debug Decoder</SectionTitle>
+            <LeadText>
+              Debug блок отвечает на вопрос “почему система поступила именно
+              так”. Это не просто технические детали: по нему можно понять,
+              был ли найден правильный source, почему сработал declined, где
+              задержка, и какой слой retrieval внес главный вклад.
+            </LeadText>
             <Grid>
               {DEBUG_FIELDS.map(([field, explanation]) => (
                 <InfoPanel key={field}>
@@ -644,6 +856,47 @@ finalScore = localRerank(score)`}
             </Grid>
           </Section>
         </>
+      ) : null}
+
+      {activeView === "glossary" ? (
+        <Section>
+          <SectionTitle>Glossary: термины простым языком</SectionTitle>
+          <LeadText>
+            Здесь собраны слова, которые постоянно встречаются в коде и UI.
+            Слева выбери термин, справа смотри три уровня объяснения: общее
+            значение, как это устроено именно в проекте, и живой пример.
+          </LeadText>
+          <GlossaryLayout>
+            <TermList>
+              {GLOSSARY.map((item) => (
+                <TermButton
+                  key={item.term}
+                  type="button"
+                  onClick={() => setSelectedTerm(item.term)}
+                  $active={selectedTerm === item.term}
+                >
+                  {item.term}
+                </TermButton>
+              ))}
+            </TermList>
+            <TermDetail>
+              <Eyebrow>Selected term</Eyebrow>
+              <TermTitle>{activeTerm.term}</TermTitle>
+              <DefinitionBlock>
+                <DefinitionLabel>Коротко</DefinitionLabel>
+                <Text>{activeTerm.short}</Text>
+              </DefinitionBlock>
+              <DefinitionBlock>
+                <DefinitionLabel>В нашем проекте</DefinitionLabel>
+                <Text>{activeTerm.projectMeaning}</Text>
+              </DefinitionBlock>
+              <DefinitionBlock>
+                <DefinitionLabel>Пример</DefinitionLabel>
+                <Text>{activeTerm.example}</Text>
+              </DefinitionBlock>
+            </TermDetail>
+          </GlossaryLayout>
+        </Section>
       ) : null}
     </Layout>
   );
@@ -697,8 +950,8 @@ function StageDetail({ stage }: { stage: StageInfo }) {
 const Intro = styled.section`
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 22px;
+  border-radius: 8px;
+  padding: 24px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-soft);
 `;
@@ -722,15 +975,54 @@ const Subtitle = styled.p`
   margin: 0;
   color: var(--text-muted);
   line-height: 1.7;
+  max-width: 920px;
+`;
+
+const SummaryGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 700px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SummaryItem = styled.div`
+  border-left: 3px solid var(--accent);
+  background: var(--surface-subtle);
+  padding: 12px 13px;
+`;
+
+const SummaryLabel = styled.div`
+  color: var(--text-primary);
+  font-weight: 800;
+  margin-bottom: 6px;
+`;
+
+const SummaryText = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 13px;
 `;
 
 const NavGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1240px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  @media (max-width: 900px) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -740,10 +1032,13 @@ const NavGrid = styled.div`
 `;
 
 const NavButton = styled.button<{ $active: boolean }>`
-  border: 1px solid ${({ $active }) => ($active ? "rgba(16, 163, 127, 0.45)" : "var(--border)")};
-  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "var(--surface)")};
+  border: 1px solid
+    ${({ $active }) =>
+      $active ? "rgba(16, 163, 127, 0.45)" : "var(--border)"};
+  background: ${({ $active }) =>
+    $active ? "var(--accent-soft)" : "var(--surface)"};
   color: var(--text-primary);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px;
   text-align: left;
   cursor: pointer;
@@ -760,7 +1055,7 @@ const NavButton = styled.button<{ $active: boolean }>`
 const Section = styled.section`
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 8px;
   padding: 20px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-soft);
@@ -771,10 +1066,23 @@ const SectionTitle = styled.h3`
   font-size: 22px;
 `;
 
+const SubsectionTitle = styled.h4`
+  margin: 18px 0 12px;
+  font-size: 18px;
+  color: var(--text-primary);
+`;
+
+const LeadText = styled.p`
+  margin: 0 0 16px;
+  max-width: 980px;
+  color: var(--text-secondary);
+  line-height: 1.75;
+`;
+
 const PipelineLine = styled.div`
   border: 1px solid var(--border);
   background: var(--surface-subtle);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 14px;
   color: var(--text-primary);
   font-weight: 700;
@@ -790,8 +1098,11 @@ const Segmented = styled.div`
 `;
 
 const SegmentButton = styled.button<{ $active: boolean }>`
-  border: 1px solid ${({ $active }) => ($active ? "rgba(16, 163, 127, 0.45)" : "var(--border)")};
-  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "var(--surface-subtle)")};
+  border: 1px solid
+    ${({ $active }) =>
+      $active ? "rgba(16, 163, 127, 0.45)" : "var(--border)"};
+  background: ${({ $active }) =>
+    $active ? "var(--accent-soft)" : "var(--surface-subtle)"};
   color: var(--text-primary);
   border-radius: 999px;
   padding: 8px 12px;
@@ -822,7 +1133,7 @@ const StepGrid = styled.div`
 const StepCard = styled.div`
   border: 1px solid var(--border);
   background: var(--surface-subtle);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 14px;
 `;
 
@@ -855,9 +1166,12 @@ const StagePicker = styled.div`
 `;
 
 const StageButton = styled.button<{ $active: boolean }>`
-  border: 1px solid ${({ $active }) => ($active ? "rgba(16, 163, 127, 0.45)" : "var(--border)")};
-  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "var(--surface-subtle)")};
-  border-radius: 12px;
+  border: 1px solid
+    ${({ $active }) =>
+      $active ? "rgba(16, 163, 127, 0.45)" : "var(--border)"};
+  background: ${({ $active }) =>
+    $active ? "var(--accent-soft)" : "var(--surface-subtle)"};
+  border-radius: 8px;
   padding: 11px;
   text-align: left;
   color: var(--text-primary);
@@ -911,7 +1225,7 @@ const ThreeColumn = styled.div`
 const InfoPanel = styled.div`
   border: 1px solid var(--border);
   background: var(--surface-subtle);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 14px;
 `;
 
@@ -950,7 +1264,7 @@ const TagList = styled.div`
 const MetricTag = styled.span`
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 6px 10px;
   font-size: 13px;
   color: var(--accent-strong);
@@ -965,7 +1279,7 @@ const PathList = styled.div`
 const PathItem = styled.code`
   display: block;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
@@ -975,7 +1289,7 @@ const PathItem = styled.code`
 const CodeBlock = styled.pre`
   margin: 0;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
@@ -994,9 +1308,93 @@ const DecisionItem = styled.div`
   gap: 12px;
   border: 1px solid var(--border);
   background: var(--surface-subtle);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 10px 12px;
   color: var(--text-secondary);
+`;
+
+const ExampleStrip = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ExampleItem = styled.div`
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 12px;
+`;
+
+const ExampleKey = styled.div`
+  color: var(--accent-strong);
+  font-weight: 800;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+`;
+
+const GlossaryLayout = styled.div`
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
+
+  @media (max-width: 820px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const TermList = styled.div`
+  display: grid;
+  gap: 8px;
+  align-content: start;
+`;
+
+const TermButton = styled.button<{ $active: boolean }>`
+  border: 1px solid
+    ${({ $active }) =>
+      $active ? "rgba(16, 163, 127, 0.45)" : "var(--border)"};
+  background: ${({ $active }) =>
+    $active ? "var(--accent-soft)" : "var(--surface-subtle)"};
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 800;
+  cursor: pointer;
+`;
+
+const TermDetail = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 18px;
+`;
+
+const TermTitle = styled.h3`
+  margin: 0 0 14px;
+  font-size: 24px;
+`;
+
+const DefinitionBlock = styled.div`
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  padding: 12px 14px;
+  margin-top: 10px;
+`;
+
+const DefinitionLabel = styled.div`
+  color: var(--text-primary);
+  font-weight: 800;
+  margin-bottom: 6px;
 `;
 
 const Callout = styled.div`
@@ -1004,7 +1402,7 @@ const Callout = styled.div`
   border: 1px solid rgba(16, 163, 127, 0.28);
   background: var(--accent-soft);
   color: var(--text-primary);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 14px;
   line-height: 1.7;
 `;
@@ -1013,7 +1411,7 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: 8px;
 
   th,
   td {
