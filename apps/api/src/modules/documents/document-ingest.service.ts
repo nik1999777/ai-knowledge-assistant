@@ -8,12 +8,13 @@ import { createAppError } from "../../utils/app-error.js";
 import type { IngestResponse } from "./documents.types.js";
 
 export async function ingestUploadedDocument(input: {
+  docId?: string;
   fileName: string;
   mimeType?: string;
   buffer: Buffer;
 }): Promise<IngestResponse> {
   const parsedDocument = await parseDocument(input);
-  const docId = crypto.randomUUID();
+  const docId = input.docId ?? crypto.randomUUID();
   const chunks = chunkDocument(parsedDocument.text);
 
   if (chunks.length === 0) {

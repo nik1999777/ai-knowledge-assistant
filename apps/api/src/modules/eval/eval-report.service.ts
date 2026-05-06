@@ -2,10 +2,15 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAppError } from "../../utils/app-error.js";
 
-const REPORT_RELATIVE_PATH = path.join("test-data", "rag-eval", "last-report.json");
+type EvalReportMode = "current" | "seed";
 
-export async function getLatestEvalReport() {
-  const reportPath = await resolveReportPath();
+const REPORT_FILES: Record<EvalReportMode, string> = {
+  current: "last-report.json",
+  seed: "last-seed-report.json",
+};
+
+export async function getLatestEvalReport(mode: EvalReportMode = "current") {
+  const reportPath = await resolveReportPath(REPORT_FILES[mode]);
 
   try {
     const raw = await readFile(reportPath, "utf-8");
@@ -14,7 +19,9 @@ export async function getLatestEvalReport() {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       throw createAppError(
         404,
-        "Eval report не найден. Запустите npm run eval:rag из apps/api",
+        mode === "seed"
+          ? "Seed eval report не найден. Запустите npm run eval:seed из apps/api"
+          : "Eval report не найден. Запустите npm run eval:rag из apps/api",
       );
     }
 
@@ -22,10 +29,11 @@ export async function getLatestEvalReport() {
   }
 }
 
-async function resolveReportPath() {
+async function resolveReportPath(fileName: string) {
+  const reportRelativePath = path.join("test-data", "rag-eval", fileName);
   const candidates = [
-    path.resolve(process.cwd(), REPORT_RELATIVE_PATH),
-    path.resolve(process.cwd(), "../..", REPORT_RELATIVE_PATH),
+    path.resolve(process.cwd(), reportRelativePath),
+    path.resolve(process.cwd(), "../..", reportRelativePath),
   ];
 
   for (const candidate of candidates) {

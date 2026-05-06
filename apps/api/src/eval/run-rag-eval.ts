@@ -33,6 +33,13 @@ type EvalSourceSnapshot = {
   textPreview: string;
 };
 
+type RunRagEvalOptions = {
+  allowedSourceDocIds?: Set<string>;
+  datasetPath: string;
+  label?: string;
+  reportPath: string;
+};
+
 type EvalCaseResult = {
   id: string;
   category: EvalCategory;
@@ -73,25 +80,33 @@ async function main() {
   const reportDir = path.resolve(process.cwd(), "../..", "test-data/rag-eval");
   const reportPath = path.join(reportDir, "last-report.json");
 
-  const dataset = await loadDataset(datasetPath);
+  await initPostgres();
+  await runMigrations();
+  await initCollection();
+
+  await runRagEval({
+    datasetPath,
+    reportPath,
+    label: "eval",
+  });
+}
+
+export async function runRagEval(options: RunRagEvalOptions) {
+  const dataset = await loadDataset(options.datasetPath);
 
   if (dataset.length === 0) {
     throw new Error("Eval dataset пустой: добавьте вопросы в questions.json");
   }
 
-  await initPostgres();
-  await runMigrations();
-  await initCollection();
-
-  console.log(`[eval] started, cases=${dataset.length}`);
+  console.log(`[${options.label ?? "eval"}] started, cases=${dataset.length}`);
 
   const results: EvalCaseResult[] = [];
 
   for (const testCase of dataset) {
-    const result = await evaluateCase(testCase);
+    const result = await evaluateCase(testCase, options);
     results.push(result);
     console.log(
-      `[eval] ${testCase.id} bestScore=${result.bestScore.toFixed(3)} declined=${result.declined} policy=${result.policyDeclined} model=${result.modelDeclined}`,
+      `[${options.label ?? "eval"}] ${testCase.id} bestScore=${result.bestScore.toFixed(3)} declined=${result.declined} policy=${result.policyDeclined} model=${result.modelDeclined}`,
     );
   }
 
@@ -102,17 +117,20 @@ async function main() {
     results,
   };
 
-  await mkdir(reportDir, { recursive: true });
-  await writeFile(reportPath, JSON.stringify(payload, null, 2), "utf-8");
+  await mkdir(path.dirname(options.reportPath), { recursive: true });
+  await writeFile(options.reportPath, JSON.stringify(payload, null, 2), "utf-8");
 
-  console.log("[eval] done");
+  console.log(`[${options.label ?? "eval"}] done`);
   console.log(
-    `[eval] answerability_accuracy=${summary.answerabilityAccuracy.toFixed(3)} answerable_rate=${summary.answerableRate.toFixed(3)} decline_rate=${summary.declineRate.toFixed(3)} avg_best_score=${summary.avgBestScore.toFixed(3)} avg_vector=${summary.avgVectorCount.toFixed(2)} avg_lexical=${summary.avgLexicalCount.toFixed(2)} avg_merged=${summary.avgMergedCount.toFixed(2)} fp=${summary.confusion.fp} fn=${summary.confusion.fn} tp=${summary.confusion.tp} tn=${summary.confusion.tn} recommended_threshold=${summary.recommendedThreshold.threshold.toFixed(3)} recommended_accuracy=${summary.recommendedThreshold.accuracy.toFixed(3)} dual_decline=${summary.recommendedDualThreshold.declineThreshold.toFixed(3)} dual_answer=${summary.recommendedDualThreshold.answerThreshold.toFixed(3)} dual_accuracy=${summary.recommendedDualThreshold.accuracy.toFixed(3)}`,
+    `[${options.label ?? "eval"}] answerability_accuracy=${summary.answerabilityAccuracy.toFixed(3)} answerable_rate=${summary.answerableRate.toFixed(3)} decline_rate=${summary.declineRate.toFixed(3)} avg_best_score=${summary.avgBestScore.toFixed(3)} avg_vector=${summary.avgVectorCount.toFixed(2)} avg_lexical=${summary.avgLexicalCount.toFixed(2)} avg_merged=${summary.avgMergedCount.toFixed(2)} fp=${summary.confusion.fp} fn=${summary.confusion.fn} tp=${summary.confusion.tp} tn=${summary.confusion.tn} recommended_threshold=${summary.recommendedThreshold.threshold.toFixed(3)} recommended_accuracy=${summary.recommendedThreshold.accuracy.toFixed(3)} dual_decline=${summary.recommendedDualThreshold.declineThreshold.toFixed(3)} dual_answer=${summary.recommendedDualThreshold.answerThreshold.toFixed(3)} dual_accuracy=${summary.recommendedDualThreshold.accuracy.toFixed(3)}`,
   );
-  console.log(`[eval] report: ${reportPath}`);
+  console.log(`[${options.label ?? "eval"}] report: ${options.reportPath}`);
 }
 
-async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
+async function evaluateCase(
+  testCase: EvalCase,
+  options: Pick<RunRagEvalOptions, "allowedSourceDocIds"> = {},
+): Promise<EvalCaseResult> {
   let answer = "";
 
   const { answer: finalAnswer, meta } = await streamChatWithKnowledgeBase(
@@ -130,17 +148,23 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
 
   const decisionDeclined = meta.debug.decision === "declined";
   const answerDeclined = isDeclineAnswer(answer);
-  const declined = decisionDeclined || answerDeclined;
+  const allowedSources = options.allowedSourceDocIds
+    ? meta.sources.filter((source) => options.allowedSourceDocIds?.has(source.docId))
+    : meta.sources;
+  const sourceCount = allowedSources.length;
+  const sourceText = allowedSources
+    .map((source) => `${source.title}\n${source.text}`)
+    .join("\n");
+  const hasAllowedSources = !options.allowedSourceDocIds || sourceCount > 0;
   const answerKeywordHit = hasKeywordHit(
     answer,
     testCase.expected.answerKeywords ?? [],
   );
   const sourceKeywordHit = hasKeywordHit(
-    meta.sources
-      .map((source) => `${source.title}\n${source.text}`)
-      .join("\n"),
+    sourceText,
     testCase.expected.sourceKeywords ?? [],
   );
+  const declined = !hasAllowedSources || decisionDeclined || answerDeclined;
 
   return {
     id: testCase.id,
@@ -148,7 +172,13 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
     question: testCase.question,
     answer,
     declined,
-    declineReason: decisionDeclined ? "policy" : answerDeclined ? "model" : null,
+    declineReason: !hasAllowedSources
+      ? "policy"
+      : decisionDeclined
+        ? "policy"
+        : answerDeclined
+          ? "model"
+          : null,
     decision: meta.debug.decision,
     policyDeclined: decisionDeclined,
     modelDeclined: answerDeclined,
@@ -157,7 +187,7 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
     guardrailReason: meta.debug.guardrailReason ?? null,
     lexicalCount: meta.debug.lexicalCount ?? 0,
     mergedCount: meta.debug.mergedCount ?? meta.sources.length,
-    sourceCount: meta.sources.length,
+    sourceCount,
     vectorCount: meta.debug.vectorCount ?? 0,
     expectedAnswerable: testCase.expected.answerable,
     answerKeywordHit:
@@ -168,9 +198,8 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
       testCase.expected.sourceKeywords && testCase.expected.sourceKeywords.length > 0
         ? sourceKeywordHit
         : null,
-    answerabilityCorrect:
-      declined === !testCase.expected.answerable,
-    sources: meta.sources.map((source) => ({
+    answerabilityCorrect: declined === !testCase.expected.answerable,
+    sources: allowedSources.map((source) => ({
       docId: source.docId,
       title: source.title,
       chunkIndex: source.chunkIndex,
@@ -493,7 +522,9 @@ function inferCategory(testCase: EvalCase): EvalCategory {
   return "answerable";
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("run-rag-eval.ts")) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

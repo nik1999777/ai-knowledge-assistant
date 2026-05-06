@@ -20,6 +20,7 @@ pnpm-debug.log*
 
 # Generated eval reports
 test-data/rag-eval/last-report.json
+test-data/rag-eval/last-seed-report.json
 
 # OS / editor
 .DS_Store
@@ -31,4 +32,3 @@ test-data/rag-eval/last-report.json
 *.ntvs*
 *.njsproj
 *.sln
-

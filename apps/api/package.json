@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "migrate": "tsx src/db/run-migrations.ts",
-    "eval:rag": "tsx src/eval/run-rag-eval.ts"
+    "eval:rag": "tsx src/eval/run-rag-eval.ts",
+    "eval:seed": "tsx src/eval/seed-rag-eval.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,16 +1,18 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { getEvalReport } from "../../features/eval/api/eval";
+import type { EvalReportMode } from "../../features/eval/api/eval";
 import type { EvalCaseResult } from "../../features/eval/types/eval";
 import { AppHeader } from "../../shared/components/AppHeader";
 import { ErrorCard } from "../../shared/components/ErrorCard";
 import { Layout } from "../../shared/components/Layout";
 
 export function EvalPage() {
+  const [reportMode, setReportMode] = useState<EvalReportMode>("seed");
   const reportQuery = useQuery({
-    queryKey: ["eval-report"],
-    queryFn: getEvalReport,
+    queryKey: ["eval-report", reportMode],
+    queryFn: () => getEvalReport(reportMode),
   });
   const report = reportQuery.data;
   const failedCases = useMemo(
@@ -29,10 +31,25 @@ export function EvalPage() {
         <Eyebrow>RAG Eval</Eyebrow>
         <Title>Качество retrieval и decision policy</Title>
         <Subtitle>
-          Эта страница читает последний `test-data/rag-eval/last-report.json`.
-          После изменений в retrieval запускай `npm run eval:rag` из `apps/api`
-          и смотри, стало ли лучше.
+          Seed benchmark нужен для воспроизводимой проверки качества. Current
+          report показывает прогон по текущей изменяемой базе знаний.
         </Subtitle>
+        <ModeToggle>
+          <ModeButton
+            type="button"
+            onClick={() => setReportMode("seed")}
+            $active={reportMode === "seed"}
+          >
+            Seed benchmark
+          </ModeButton>
+          <ModeButton
+            type="button"
+            onClick={() => setReportMode("current")}
+            $active={reportMode === "current"}
+          >
+            Current KB
+          </ModeButton>
+        </ModeToggle>
       </HeroCard>
 
       {reportQuery.isLoading ? <InfoCard>Загружаю eval report...</InfoCard> : null}
@@ -49,6 +66,11 @@ export function EvalPage() {
 
       {report ? (
         <>
+          <ModeHint>
+            {reportMode === "seed"
+              ? "Команда: cd apps/api && npm run eval:seed"
+              : "Команда: cd apps/api && npm run eval:rag"}
+          </ModeHint>
           <MetaLine>Последний прогон: {formatDate(report.generatedAt)}</MetaLine>
 
           <MetricGrid>
@@ -277,6 +299,29 @@ const Subtitle = styled.p`
   line-height: 1.7;
 `;
 
+const ModeToggle = styled.div`
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+`;
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  border: 1px solid
+    ${({ $active }) => ($active ? "rgba(16, 163, 127, 0.35)" : "transparent")};
+  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "transparent")};
+  color: ${({ $active }) =>
+    $active ? "var(--accent-strong)" : "var(--text-secondary)"};
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+`;
+
 const InfoCard = styled.div`
   background: var(--surface);
   border: 1px solid var(--border);
@@ -288,6 +333,13 @@ const InfoCard = styled.div`
 const MetaLine = styled.p`
   margin: 0 0 14px;
   color: var(--text-muted);
+  line-height: 1.6;
+`;
+
+const ModeHint = styled.p`
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
   line-height: 1.6;
 `;
 

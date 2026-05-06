@@ -57,11 +57,20 @@ Open `http://localhost:5173`.
 
 ## Eval
 
-Run from `apps/api`:
+There are two eval modes.
+
+Run against the current mutable knowledge base:
 
 ```bash
 npm run eval:rag
 ```
 
-The script writes `test-data/rag-eval/last-report.json`. The frontend reads it through `GET /eval/report` and shows quality metrics at `/eval`.
+Run the reproducible seed benchmark:
 
+```bash
+npm run eval:seed
+```
+
+`eval:seed` reindexes fixed documents from `test-data/rag-eval/seed-docs`, runs `questions.seed.json`, and writes `test-data/rag-eval/last-seed-report.json`.
+
+Use `eval:seed` when changing retrieval, prompt, thresholds, or reranking logic. Use `eval:rag` only when the current uploaded documents match `questions.json`.

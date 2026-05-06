@@ -1,0 +1,145 @@
+[
+  {
+    "id": "seed-001",
+    "category": "answerable",
+    "question": "Что такое RAG?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["retrieval", "generation", "context"],
+      "sourceKeywords": ["Retrieval-Augmented Generation", "retrieves relevant knowledge"]
+    }
+  },
+  {
+    "id": "seed-002",
+    "category": "answerable",
+    "question": "Почему RAG снижает галлюцинации?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["context", "documents", "facts"],
+      "sourceKeywords": ["reduce hallucinations", "retrieved context"]
+    }
+  },
+  {
+    "id": "seed-003",
+    "category": "answerable",
+    "question": "Зачем разбивать документ на chunks?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["retrieval", "precise", "context"],
+      "sourceKeywords": ["Chunking matters", "retrieval more precise"]
+    }
+  },
+  {
+    "id": "seed-004",
+    "category": "exact",
+    "question": "Что такое embeddings?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["numeric", "vector", "text"],
+      "sourceKeywords": ["numeric vector representations"]
+    }
+  },
+  {
+    "id": "seed-005",
+    "category": "exact",
+    "question": "Какой компонент отвечает за similarity search?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["Qdrant", "similarity search"],
+      "sourceKeywords": ["Similarity search is handled by Qdrant"]
+    }
+  },
+  {
+    "id": "seed-006",
+    "category": "answerable",
+    "question": "Чем lexical search отличается от vector search?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["words", "semantic", "similarity"],
+      "sourceKeywords": ["Lexical search matches words", "vector search matches semantic similarity"]
+    }
+  },
+  {
+    "id": "seed-007",
+    "category": "answerable",
+    "question": "Что дает hybrid retrieval?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["vector", "lexical", "better"],
+      "sourceKeywords": ["Hybrid retrieval combines vector candidates with lexical candidates"]
+    }
+  },
+  {
+    "id": "seed-008",
+    "category": "exact",
+    "question": "Какая модель используется для embeddings?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["nomic-embed-text"],
+      "sourceKeywords": ["nomic-embed-text"]
+    }
+  },
+  {
+    "id": "seed-009",
+    "category": "exact",
+    "question": "Какая модель используется для генерации?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["llama3"],
+      "sourceKeywords": ["llama3"]
+    }
+  },
+  {
+    "id": "seed-010",
+    "category": "answerable",
+    "question": "Что хранит Postgres в этом проекте?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["metadata", "chat", "messages"],
+      "sourceKeywords": ["Postgres stores document metadata", "chat sessions"]
+    }
+  },
+  {
+    "id": "seed-011",
+    "category": "answerable",
+    "question": "Что хранит Qdrant?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["embeddings", "chunks", "similarity"],
+      "sourceKeywords": ["Qdrant stores vector embeddings"]
+    }
+  },
+  {
+    "id": "seed-012",
+    "category": "unanswerable",
+    "question": "Какая столица Франции?",
+    "expected": {
+      "answerable": false
+    }
+  },
+  {
+    "id": "seed-013",
+    "category": "unanswerable",
+    "question": "Кто президент США прямо сейчас?",
+    "expected": {
+      "answerable": false
+    }
+  },
+  {
+    "id": "seed-014",
+    "category": "unanswerable",
+    "question": "Какой курс доллара сегодня?",
+    "expected": {
+      "answerable": false
+    }
+  },
+  {
+    "id": "seed-015",
+    "category": "unanswerable",
+    "question": "Что такое finalStatusModels в документации METRICS?",
+    "expected": {
+      "answerable": false
+    }
+  }
+]
+
