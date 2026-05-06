@@ -22,7 +22,10 @@ export type EvalCaseResult = {
   question: string;
   answer: string;
   declined: boolean;
+  declineReason?: "model" | "policy" | null;
   decision?: "answered" | "declined";
+  policyDeclined?: boolean;
+  modelDeclined?: boolean;
   bestScore: number;
   domainEvidence?: number;
   guardrailReason?: string | null;
@@ -34,6 +37,14 @@ export type EvalCaseResult = {
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;
+  sources?: Array<{
+    docId: string;
+    title: string;
+    chunkIndex: number;
+    score: number;
+    section?: string | null;
+    textPreview: string;
+  }>;
 };
 
 export type EvalReport = {
@@ -48,6 +59,10 @@ export type EvalReport = {
     avgVectorCount: number;
     avgLexicalCount: number;
     avgMergedCount: number;
+    avgDomainEvidence?: number;
+    policyDeclined?: number;
+    modelDeclined?: number;
+    modelDeclinedAfterPolicyAnswer?: number;
     answerabilityAccuracy: number;
     confusion: EvalConfusion;
     categorySummary?: EvalCategorySummary[];

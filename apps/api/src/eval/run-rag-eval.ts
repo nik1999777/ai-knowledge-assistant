@@ -16,7 +16,22 @@ type EvalCase = {
   };
 };
 
-type EvalCategory = "answerable" | "broad" | "exact" | "multi-hop" | "tricky" | "unanswerable";
+type EvalCategory =
+  | "answerable"
+  | "broad"
+  | "exact"
+  | "multi-hop"
+  | "tricky"
+  | "unanswerable";
+
+type EvalSourceSnapshot = {
+  docId: string;
+  title: string;
+  chunkIndex: number;
+  score: number;
+  section?: string | null;
+  textPreview: string;
+};
 
 type EvalCaseResult = {
   id: string;
@@ -24,7 +39,10 @@ type EvalCaseResult = {
   question: string;
   answer: string;
   declined: boolean;
+  declineReason: "model" | "policy" | null;
   decision: "answered" | "declined";
+  policyDeclined: boolean;
+  modelDeclined: boolean;
   bestScore: number;
   domainEvidence: number;
   guardrailReason: string | null;
@@ -36,6 +54,7 @@ type EvalCaseResult = {
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;
+  sources: EvalSourceSnapshot[];
 };
 
 const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
@@ -72,7 +91,7 @@ async function main() {
     const result = await evaluateCase(testCase);
     results.push(result);
     console.log(
-      `[eval] ${testCase.id} bestScore=${result.bestScore.toFixed(3)} declined=${result.declined}`,
+      `[eval] ${testCase.id} bestScore=${result.bestScore.toFixed(3)} declined=${result.declined} policy=${result.policyDeclined} model=${result.modelDeclined}`,
     );
   }
 
@@ -111,6 +130,7 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
 
   const decisionDeclined = meta.debug.decision === "declined";
   const answerDeclined = isDeclineAnswer(answer);
+  const declined = decisionDeclined || answerDeclined;
   const answerKeywordHit = hasKeywordHit(
     answer,
     testCase.expected.answerKeywords ?? [],
@@ -127,8 +147,11 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
     category: testCase.category ?? inferCategory(testCase),
     question: testCase.question,
     answer,
-    declined: decisionDeclined || answerDeclined,
+    declined,
+    declineReason: decisionDeclined ? "policy" : answerDeclined ? "model" : null,
     decision: meta.debug.decision,
+    policyDeclined: decisionDeclined,
+    modelDeclined: answerDeclined,
     bestScore: meta.bestScore,
     domainEvidence: meta.debug.domainEvidence ?? 0,
     guardrailReason: meta.debug.guardrailReason ?? null,
@@ -146,7 +169,15 @@ async function evaluateCase(testCase: EvalCase): Promise<EvalCaseResult> {
         ? sourceKeywordHit
         : null,
     answerabilityCorrect:
-      (decisionDeclined || answerDeclined) === !testCase.expected.answerable,
+      declined === !testCase.expected.answerable,
+    sources: meta.sources.map((source) => ({
+      docId: source.docId,
+      title: source.title,
+      chunkIndex: source.chunkIndex,
+      score: source.score,
+      section: source.section,
+      textPreview: createPreview(source.text),
+    })),
   };
 }
 
@@ -162,6 +193,13 @@ function buildSummary(results: EvalCaseResult[]) {
     results.reduce((sum, item) => sum + item.lexicalCount, 0) / total;
   const avgMergedCount =
     results.reduce((sum, item) => sum + item.mergedCount, 0) / total;
+  const avgDomainEvidence =
+    results.reduce((sum, item) => sum + item.domainEvidence, 0) / total;
+  const policyDeclined = results.filter((item) => item.policyDeclined).length;
+  const modelDeclined = results.filter((item) => item.modelDeclined).length;
+  const modelDeclinedAfterPolicyAnswer = results.filter(
+    (item) => !item.policyDeclined && item.modelDeclined,
+  ).length;
   const answerabilityCorrect = results.filter(
     (item) => item.answerabilityCorrect,
   ).length;
@@ -187,6 +225,10 @@ function buildSummary(results: EvalCaseResult[]) {
     avgVectorCount,
     avgLexicalCount,
     avgMergedCount,
+    avgDomainEvidence,
+    policyDeclined,
+    modelDeclined,
+    modelDeclinedAfterPolicyAnswer,
     answerabilityAccuracy: answerabilityCorrect / total,
     confusion,
     categorySummary,
@@ -404,6 +446,16 @@ function hasKeywordHit(text: string, keywords: string[]) {
 
 function normalizeAnswer(value: string) {
   return value.trim().toLocaleLowerCase();
+}
+
+function createPreview(value: string, maxLength = 420) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
 function isDeclineAnswer(value: string) {

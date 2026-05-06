@@ -71,6 +71,30 @@ export function EvalPage() {
               <MetricLabel>Avg best score</MetricLabel>
               <MetricValue>{report.summary.avgBestScore.toFixed(3)}</MetricValue>
             </MetricCard>
+
+            <MetricCard>
+              <MetricLabel>Policy declined</MetricLabel>
+              <MetricValue>{report.summary.policyDeclined ?? "—"}</MetricValue>
+            </MetricCard>
+
+            <MetricCard>
+              <MetricLabel>Model declined</MetricLabel>
+              <MetricValue>{report.summary.modelDeclined ?? "—"}</MetricValue>
+            </MetricCard>
+
+            <MetricCard $tone="warn">
+              <MetricLabel>Model refusals after policy answer</MetricLabel>
+              <MetricValue>
+                {report.summary.modelDeclinedAfterPolicyAnswer ?? "—"}
+              </MetricValue>
+            </MetricCard>
+
+            <MetricCard>
+              <MetricLabel>Avg domain evidence</MetricLabel>
+              <MetricValue>
+                {formatOptionalNumber(report.summary.avgDomainEvidence)}
+              </MetricValue>
+            </MetricCard>
           </MetricGrid>
 
           <TwoColumn>
@@ -196,10 +220,29 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
       <DebugLine>
         <span>expected: {result.expectedAnswerable ? "answer" : "decline"}</span>
         <span>actual: {result.declined ? "declined" : "answered"}</span>
+        <span>reason: {result.declineReason ?? "none"}</span>
+        <span>policy: {result.policyDeclined ? "declined" : "answered"}</span>
+        <span>model: {result.modelDeclined ? "declined" : "answered"}</span>
         <span>score: {result.bestScore.toFixed(3)}</span>
         <span>decision: {result.decision ?? "unknown"}</span>
-        <span>reason: {result.guardrailReason ?? "none"}</span>
+        <span>guardrail: {result.guardrailReason ?? "none"}</span>
       </DebugLine>
+
+      {result.sources?.length ? (
+        <SourcesList>
+          {result.sources.slice(0, 3).map((source) => (
+            <SourcePreview key={`${source.docId}-${source.chunkIndex}`}>
+              <SourcePreviewHeader>
+                <strong>{source.title}</strong>
+                <span>
+                  chunk {source.chunkIndex} · {source.score.toFixed(3)}
+                </span>
+              </SourcePreviewHeader>
+              <SourcePreviewText>{source.textPreview}</SourcePreviewText>
+            </SourcePreview>
+          ))}
+        </SourcesList>
+      ) : null}
     </CaseArticle>
   );
 }
@@ -467,8 +510,46 @@ const DebugLine = styled.div`
   font-size: 13px;
 `;
 
+const SourcesList = styled.div`
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+`;
+
+const SourcePreview = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+`;
+
+const SourcePreviewHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+
+  span {
+    color: var(--text-muted);
+  }
+`;
+
+const SourcePreviewText = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+`;
+
 function formatPercent(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
+}
+
+function formatOptionalNumber(value?: number) {
+  return typeof value === "number" ? value.toFixed(3) : "—";
 }
 
 function formatDate(value: string) {
