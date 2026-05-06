@@ -10,7 +10,11 @@ type ViewId =
   | "storage"
   | "api"
   | "debug"
-  | "glossary";
+  | "glossary"
+  | "why"
+  | "data"
+  | "failures"
+  | "roadmap";
 type TraceId = "question" | "decline" | "ingestion" | "seed_eval";
 type StageId =
   | "upload"
@@ -43,6 +47,28 @@ type GlossaryItem = {
   short: string;
   projectMeaning: string;
   example: string;
+};
+
+type DecisionRecord = {
+  decision: string;
+  why: string;
+  alternatives: string;
+  tradeoff: string;
+  files: string[];
+};
+
+type PayloadExample = {
+  title: string;
+  explanation: string;
+  code: string;
+};
+
+type FailureRecord = {
+  symptom: string;
+  likelyCause: string;
+  uiCheck: string;
+  codeCheck: string;
+  command: string;
 };
 
 const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
@@ -80,6 +106,26 @@ const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
     id: "glossary",
     title: "Glossary",
     subtitle: "Термины простым языком",
+  },
+  {
+    id: "why",
+    title: "Why",
+    subtitle: "Почему так спроектировано",
+  },
+  {
+    id: "data",
+    title: "Data",
+    subtitle: "Payloads и lifecycle",
+  },
+  {
+    id: "failures",
+    title: "Failures",
+    subtitle: "Диагностика проблем",
+  },
+  {
+    id: "roadmap",
+    title: "Roadmap",
+    subtitle: "Ограничения и следующий шаг",
   },
 ];
 
@@ -561,6 +607,244 @@ const EVAL_READING_GUIDE = [
   ["sourceKeywordHit", "Проверяет, что retrieval достал source с нужными evidence словами."],
 ];
 
+const DESIGN_DECISIONS: DecisionRecord[] = [
+  {
+    decision: "Fastify backend",
+    why: "Нужен легкий API server с хорошей поддержкой streaming/SSE, multipart upload и понятной модульной структурой без большого framework overhead.",
+    alternatives: "Express проще и популярнее; Nest дает больше архитектурных правил, но добавляет слой DI/decorators.",
+    tradeoff:
+      "Fastify оставляет больше решений нам: структура services/repositories/modules держится дисциплиной проекта, а не framework магией.",
+    files: ["apps/api/src/app.ts", "apps/api/src/server.ts"],
+  },
+  {
+    decision: "Postgres + Qdrant",
+    why: "Postgres удобен для документов, истории, FTS и JSON debug. Qdrant специализирован для vector search и payload filtering.",
+    alternatives: "Только Postgres с pgvector; только Qdrant с metadata; внешние managed vector DB.",
+    tradeoff:
+      "Две базы требуют consistency checks и cleanup, зато дают сильный lexical search, нормальную историю и быстрый vector retrieval.",
+    files: ["apps/api/src/repositories/documents.repository.ts", "apps/api/src/clients/qdrant.client.ts"],
+  },
+  {
+    decision: "Ollama local models",
+    why: "Проект локальный: embeddings и generation работают без внешнего API, ключей и отправки пользовательских документов наружу.",
+    alternatives: "OpenAI/Anthropic API, hosted embeddings, managed inference.",
+    tradeoff:
+      "Локально проще с privacy, но качество/скорость зависит от машины, модели и состояния Ollama.",
+    files: ["apps/api/src/clients/ollama.client.ts", "apps/api/src/services/llm.service.ts"],
+  },
+  {
+    decision: "Hybrid retrieval",
+    why: "Vector search ловит смысл, lexical FTS ловит точные термины. В RAG нужны оба сигнала, потому что пользовательские вопросы бывают и смысловыми, и терминологическими.",
+    alternatives: "Только vector search; только FTS; внешний reranker без lexical layer.",
+    tradeoff:
+      "Hybrid pipeline сложнее дебажить, зато source debug показывает, какой слой нашел chunk и почему он попал в top-K.",
+    files: ["apps/api/src/modules/chat/chat.service.ts", "apps/api/src/repositories/documents.repository.ts"],
+  },
+  {
+    decision: "RRF вместо простого sort",
+    why: "Raw vector score и lexical score имеют разные шкалы. RRF объединяет позиции в ranked lists, поэтому устойчивее к несовместимым score.",
+    alternatives: "Сложить scores, взять максимум, вручную подобрать веса, использовать cross-encoder reranker.",
+    tradeoff:
+      "RRF проще и быстрее cross-encoder rerank, но не понимает текст глубоко; поэтому после него есть легкий local rerank.",
+    files: ["apps/api/src/modules/chat/chat.service.ts"],
+  },
+  {
+    decision: "Dual-threshold decision policy",
+    why: "Одного порога мало: есть уверенная зона answer, уверенная зона decline и серая зона, где нужен domainEvidence.",
+    alternatives: "Один threshold; всегда отвечать; отдавать решение полностью модели.",
+    tradeoff:
+      "Policy может иногда отказать на answerable вопрос, зато снижает риск уверенного ответа без evidence.",
+    files: ["apps/api/src/modules/chat/chat.service.ts", "apps/api/src/config/env.ts"],
+  },
+  {
+    decision: "documentScope user/eval",
+    why: "Seed benchmark должен быть стабильным и не должен смешиваться с пользовательской базой. Обычный чат не должен видеть eval-документы.",
+    alternatives: "Отдельные базы; отдельные Qdrant collections; фильтрация только в UI.",
+    tradeoff:
+      "Один shared storage проще, но каждый query обязан правильно применять scope в Postgres и Qdrant.",
+    files: ["apps/api/src/db/migrations/003_document_scope.sql", "apps/api/src/clients/qdrant.client.ts"],
+  },
+];
+
+const PAYLOAD_EXAMPLES: PayloadExample[] = [
+  {
+    title: "Upload request",
+    explanation:
+      "Frontend отправляет файл как multipart. Backend не получает JSON с текстом: он сам парсит файл, чтобы контролировать extraction и warnings.",
+    code: `POST /documents
+Content-Type: multipart/form-data
+
+file: rag-basics.md`,
+  },
+  {
+    title: "Parsed document",
+    explanation:
+      "Parser возвращает нормализованный textContent, тип источника и warnings. Warnings не блокируют ingestion, но помогают понять качество extraction.",
+    code: `{
+  "sourceType": "md",
+  "textContent": "Retrieval-Augmented Generation...",
+  "warnings": []
+}`,
+  },
+  {
+    title: "Chunk",
+    explanation:
+      "Chunk - минимальная единица retrieval. Именно chunk, а не весь документ, получает embedding и попадает в prompt.",
+    code: `{
+  "chunkIndex": 0,
+  "section": "Основы RAG",
+  "chunkLen": 1240,
+  "text": "RAG - это подход..."
+}`,
+  },
+  {
+    title: "Qdrant payload",
+    explanation:
+      "Qdrant хранит vector отдельно от payload. Payload нужен, чтобы вернуть source и отфильтровать scope.",
+    code: `{
+  "docId": "00000000-0000-4000-8000-000000000101",
+  "documentScope": "eval",
+  "title": "rag-basics",
+  "chunkIndex": 0,
+  "section": "Основы RAG",
+  "text": "RAG - это подход..."
+}`,
+  },
+  {
+    title: "Chat source",
+    explanation:
+      "Source показывает не только текст, но и происхождение score. По этим полям можно понять, почему chunk попал в ответ.",
+    code: `{
+  "origin": "hybrid",
+  "vectorRank": 1,
+  "vectorScore": 0.649,
+  "lexicalRank": 1,
+  "lexicalScore": 0.825,
+  "rrfScore": 1,
+  "finalScore": 0.911
+}`,
+  },
+  {
+    title: "Eval result",
+    explanation:
+      "Eval сохраняет не только answer, но и диагностику answerability: кто отказался, какие keywords найдены, какие sources были использованы.",
+    code: `{
+  "expectedAnswerable": true,
+  "declined": false,
+  "policyDeclined": false,
+  "modelDeclined": false,
+  "answerKeywordHit": true,
+  "sourceKeywordHit": true
+}`,
+  },
+];
+
+const FAILURE_PLAYBOOK: FailureRecord[] = [
+  {
+    symptom: "Документ загрузился, но чат его не находит",
+    likelyCause: "Документ не попал в Qdrant, scope не совпал, или Postgres/Qdrant рассинхронизированы.",
+    uiCheck: "Открыть /documents и страницу документа; проверить chunk count и текст.",
+    codeCheck: "Проверить `document-ingest.service.ts`, `qdrant.client.ts`, `documents.repository.ts`.",
+    command: "cd apps/api && npm run eval:current",
+  },
+  {
+    symptom: "Чат отвечает `Я не знаю` на очевидный вопрос",
+    likelyCause: "bestScore ниже threshold, domainEvidence низкий, или retrieval достал не тот source.",
+    uiCheck: "Открыть Debug и Sources: смотреть guardrailReason, origin, finalScore, source text.",
+    codeCheck: "Проверить `decideAnswerability` и `rerankSources` в chat.service.ts.",
+    command: "cd apps/api && npm run eval:seed",
+  },
+  {
+    symptom: "Source есть, но ответ расплывчатый",
+    likelyCause: "Prompt слишком общий, source содержит мало конкретики, top-K обрезал важный chunk.",
+    uiCheck: "Сравнить source text с answer; проверить, есть ли evidence в показанных chunks.",
+    codeCheck: "Проверить `prompt.service.ts`, `TOP_K`, порядок sources после rerank.",
+    command: "cd apps/api && npx tsc --noEmit",
+  },
+  {
+    symptom: "Eval просел после изменения retrieval",
+    likelyCause: "Новый ranking поднял нерелевантные chunks или изменил score distribution относительно thresholds.",
+    uiCheck: "Открыть /eval, смотреть failed cases, source previews и category summary.",
+    codeCheck: "Сравнить RRF/rerank logic и recommendedThreshold в report.",
+    command: "cd apps/api && npm run eval:seed",
+  },
+  {
+    symptom: "Ollama медленная или не отвечает",
+    likelyCause: "Модель не загружена, Ollama daemon не запущен, машина перегружена.",
+    uiCheck: "Смотреть timing: embeddingMs и llmMs.",
+    codeCheck: "Проверить `ollama.client.ts`, `readiness.service.ts`, env OLLAMA_URL.",
+    command: "ollama list",
+  },
+  {
+    symptom: "Vite ругается при build/dev",
+    likelyCause: "Node 20.10.0 ниже требования Vite 7.",
+    uiCheck: "Build все еще может проходить, но warning остается.",
+    codeCheck: "Проверить `apps/web/package.json` и версию Node.",
+    command: "node -v",
+  },
+];
+
+const LIFECYCLES = [
+  {
+    title: "Lifecycle документа",
+    steps: [
+      "Upload file",
+      "Parse text",
+      "Chunk text",
+      "Generate embeddings",
+      "Insert Postgres document",
+      "Upsert Qdrant vectors",
+      "Show in /documents",
+      "Use in chat retrieval",
+      "Delete from Postgres + Qdrant",
+    ],
+  },
+  {
+    title: "Lifecycle chat message",
+    steps: [
+      "Create/reuse session",
+      "Send user question",
+      "Build RAG context",
+      "Decide answer/decline",
+      "Stream LLM answer",
+      "Collect final text",
+      "Save assistant message",
+      "Restore answer with sources/debug",
+    ],
+  },
+];
+
+const MODULE_BOUNDARIES = [
+  ["clients", "Обертки над внешними системами: Ollama, Qdrant."],
+  ["repositories", "Доступ к Postgres и SQL-запросы. Здесь не должно быть UI-логики."],
+  ["services", "Бизнес-логика: parsing, chunking, embeddings, prompt, LLM."],
+  ["modules", "Use-cases и routes: chat, documents, eval."],
+  ["features", "Frontend domain blocks: chat, documents, eval."],
+  ["pages", "Экранные композиции: /chat, /documents, /architecture, /eval."],
+];
+
+const KNOWN_LIMITATIONS = [
+  "Нет auth/user ownership: пока база считается локальной и single-user.",
+  "Ingestion синхронный: большие документы могут долго держать request.",
+  "Нет ingestion statuses/retry queue.",
+  "Нет citations/source spans внутри ответа.",
+  "Generated eval для user docs еще не реализован.",
+  "Chunking простой, без сложной semantic segmentation.",
+  "Rerank локальный, не cross-encoder.",
+  "Нет observability dashboard и persistent tracing.",
+  "Нет export/import knowledge base.",
+];
+
+const ROADMAP_ITEMS = [
+  ["Citations/source spans", "Показывать не только chunk, но и конкретный фрагмент, на который опирается фраза ответа."],
+  ["Generated eval", "Генерировать вопросы, expected keywords и evidence из user chunks, чтобы проверять текущую базу автоматически."],
+  ["Async ingestion", "Перевести upload в job/status flow, чтобы большие PDF не блокировали UI."],
+  ["Auth/user ownership", "Изолировать документы и историю по пользователю."],
+  ["Better chunking", "Добавить более умное разбиение по структуре документа и semantic boundaries."],
+  ["Reranker", "Попробовать cross-encoder или LLM-based rerank для сложных вопросов."],
+  ["Observability", "Сохранять trace retrieval/generation для анализа latency и качества."],
+];
+
 export function ArchitecturePage() {
   const [activeView, setActiveView] = useState<ViewId>("pipeline");
   const [selectedStageId, setSelectedStageId] = useState<StageId>("retrieve");
@@ -848,6 +1132,159 @@ finalScore = localRerank(score)`}
             <SectionTitle>Troubleshooting</SectionTitle>
             <Grid>
               {TROUBLESHOOTING.map(([title, body]) => (
+                <InfoPanel key={title}>
+                  <BlockTitle>{title}</BlockTitle>
+                  <Text>{body}</Text>
+                </InfoPanel>
+              ))}
+            </Grid>
+          </Section>
+        </>
+      ) : null}
+
+      {activeView === "why" ? (
+        <Section>
+          <SectionTitle>Why This Design?</SectionTitle>
+          <LeadText>
+            Этот раздел отвечает на вопрос “почему проект устроен именно так”.
+            Архитектура состоит не из случайных библиотек, а из решений с
+            trade-off: где-то мы выбираем простоту, где-то explainability, где-то
+            локальность и приватность вместо managed-сервисов.
+          </LeadText>
+          <DecisionGrid>
+            {DESIGN_DECISIONS.map((item) => (
+              <DecisionCard key={item.decision}>
+                <BlockTitle>{item.decision}</BlockTitle>
+                <DefinitionBlock>
+                  <DefinitionLabel>Почему выбрали</DefinitionLabel>
+                  <Text>{item.why}</Text>
+                </DefinitionBlock>
+                <DefinitionBlock>
+                  <DefinitionLabel>Альтернативы</DefinitionLabel>
+                  <Text>{item.alternatives}</Text>
+                </DefinitionBlock>
+                <DefinitionBlock>
+                  <DefinitionLabel>Trade-off</DefinitionLabel>
+                  <Text>{item.tradeoff}</Text>
+                </DefinitionBlock>
+                <PathList>
+                  {item.files.map((file) => (
+                    <PathItem key={file}>{file}</PathItem>
+                  ))}
+                </PathList>
+              </DecisionCard>
+            ))}
+          </DecisionGrid>
+        </Section>
+      ) : null}
+
+      {activeView === "data" ? (
+        <>
+          <Section>
+            <SectionTitle>Data Flow With Real Payloads</SectionTitle>
+            <LeadText>
+              Здесь видно, какие данные реально проходят через систему. Это
+              полезно, когда абстрактные слова вроде “chunk”, “payload” и
+              “source” начинают смешиваться. Каждый блок показывает форму данных
+              и объясняет, зачем она нужна.
+            </LeadText>
+            <PayloadGrid>
+              {PAYLOAD_EXAMPLES.map((item) => (
+                <PayloadCard key={item.title}>
+                  <BlockTitle>{item.title}</BlockTitle>
+                  <Text>{item.explanation}</Text>
+                  <CodeBlock>{item.code}</CodeBlock>
+                </PayloadCard>
+              ))}
+            </PayloadGrid>
+          </Section>
+          <Section>
+            <SectionTitle>Lifecycles</SectionTitle>
+            <TwoColumn>
+              {LIFECYCLES.map((item) => (
+                <InfoPanel key={item.title}>
+                  <BlockTitle>{item.title}</BlockTitle>
+                  <DecisionList>
+                    {item.steps.map((step, index) => (
+                      <DecisionItem key={step}>
+                        <StepNumber>{index + 1}</StepNumber>
+                        <span>{step}</span>
+                      </DecisionItem>
+                    ))}
+                  </DecisionList>
+                </InfoPanel>
+              ))}
+            </TwoColumn>
+          </Section>
+          <Section>
+            <SectionTitle>Boundaries And Ownership</SectionTitle>
+            <Grid>
+              {MODULE_BOUNDARIES.map(([name, body]) => (
+                <InfoPanel key={name}>
+                  <BlockTitle>{name}</BlockTitle>
+                  <Text>{body}</Text>
+                </InfoPanel>
+              ))}
+            </Grid>
+          </Section>
+        </>
+      ) : null}
+
+      {activeView === "failures" ? (
+        <Section>
+          <SectionTitle>Failure Playbook</SectionTitle>
+          <LeadText>
+            Если поведение кажется странным, сначала ищем симптом, потом
+            проверяем UI debug, потом код и команду. Так диагностика становится
+            повторяемой, а не превращается в угадывание.
+          </LeadText>
+          <FailureList>
+            {FAILURE_PLAYBOOK.map((item) => (
+              <FailureCard key={item.symptom}>
+                <BlockTitle>{item.symptom}</BlockTitle>
+                <FailureGrid>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Вероятная причина</DefinitionLabel>
+                    <Text>{item.likelyCause}</Text>
+                  </DefinitionBlock>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Что проверить в UI</DefinitionLabel>
+                    <Text>{item.uiCheck}</Text>
+                  </DefinitionBlock>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Что проверить в коде</DefinitionLabel>
+                    <Text>{item.codeCheck}</Text>
+                  </DefinitionBlock>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Команда</DefinitionLabel>
+                    <PathItem>{item.command}</PathItem>
+                  </DefinitionBlock>
+                </FailureGrid>
+              </FailureCard>
+            ))}
+          </FailureList>
+        </Section>
+      ) : null}
+
+      {activeView === "roadmap" ? (
+        <>
+          <Section>
+            <SectionTitle>Known Limitations</SectionTitle>
+            <LeadText>
+              Прозрачная архитектура должна показывать не только то, что уже
+              работает, но и границы текущей версии. Это список вещей, которые
+              сознательно оставлены на следующие этапы.
+            </LeadText>
+            <InfoList>
+              {KNOWN_LIMITATIONS.map((item) => (
+                <InfoItem key={item}>{item}</InfoItem>
+              ))}
+            </InfoList>
+          </Section>
+          <Section>
+            <SectionTitle>Roadmap From Here</SectionTitle>
+            <Grid>
+              {ROADMAP_ITEMS.map(([title, body]) => (
                 <InfoPanel key={title}>
                   <BlockTitle>{title}</BlockTitle>
                   <Text>{body}</Text>
@@ -1395,6 +1832,71 @@ const DefinitionLabel = styled.div`
   color: var(--text-primary);
   font-weight: 800;
   margin-bottom: 6px;
+`;
+
+const DecisionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+
+  @media (max-width: 980px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const DecisionCard = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 14px;
+`;
+
+const PayloadGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+
+  @media (max-width: 980px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const PayloadCard = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 14px;
+
+  ${CodeBlock} {
+    margin-top: 12px;
+  }
+`;
+
+const FailureList = styled.div`
+  display: grid;
+  gap: 12px;
+`;
+
+const FailureCard = styled.div`
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 14px;
+`;
+
+const FailureGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const Callout = styled.div`
