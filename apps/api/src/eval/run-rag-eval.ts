@@ -30,6 +30,13 @@ type EvalSourceSnapshot = {
   title: string;
   chunkIndex: number;
   score: number;
+  origin?: "vector" | "lexical" | "hybrid";
+  vectorRank?: number;
+  vectorScore?: number;
+  lexicalRank?: number;
+  lexicalScore?: number;
+  rrfScore?: number;
+  finalScore?: number;
   section?: string | null;
   textPreview: string;
 };
@@ -209,6 +216,13 @@ async function evaluateCase(
       title: source.title,
       chunkIndex: source.chunkIndex,
       score: source.score,
+      origin: source.origin,
+      vectorRank: source.vectorRank,
+      vectorScore: source.vectorScore,
+      lexicalRank: source.lexicalRank,
+      lexicalScore: source.lexicalScore,
+      rrfScore: source.rrfScore,
+      finalScore: source.finalScore,
       section: source.section,
       textPreview: createPreview(source.text),
     })),

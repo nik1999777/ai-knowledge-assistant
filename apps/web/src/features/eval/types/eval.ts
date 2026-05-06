@@ -42,6 +42,13 @@ export type EvalCaseResult = {
     title: string;
     chunkIndex: number;
     score: number;
+    origin?: "vector" | "lexical" | "hybrid";
+    vectorRank?: number;
+    vectorScore?: number;
+    lexicalRank?: number;
+    lexicalScore?: number;
+    rrfScore?: number;
+    finalScore?: number;
     section?: string | null;
     textPreview: string;
   }>;

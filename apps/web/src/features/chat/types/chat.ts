@@ -6,6 +6,13 @@ export type Source = {
   chunkIndex: number;
   chunkLen?: number;
   section?: string | null;
+  origin?: "vector" | "lexical" | "hybrid";
+  vectorRank?: number;
+  vectorScore?: number;
+  lexicalRank?: number;
+  lexicalScore?: number;
+  rrfScore?: number;
+  finalScore?: number;
   score: number;
 };
 

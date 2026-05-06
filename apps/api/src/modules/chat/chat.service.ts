@@ -21,6 +21,7 @@ const MIN_DOMAIN_EVIDENCE = env.DOMAIN_EVIDENCE_THRESHOLD;
 const MIN_TOKENS_FOR_EVIDENCE = 2;
 const DECLINE_SCORE_THRESHOLD = env.DECLINE_SCORE_THRESHOLD;
 const ANSWER_SCORE_THRESHOLD = env.ANSWER_SCORE_THRESHOLD;
+const RRF_K = 60;
 
 type StreamChunkHandler = (chunk: string) => void;
 
@@ -148,7 +149,7 @@ async function buildRagChatContext(
     return typeof docId === "string" && existingDocIds.has(docId);
   });
 
-  const vectorSources: RagSource[] = vectorResults.map((item) => ({
+  const vectorSources: RagSource[] = vectorResults.map((item, index) => ({
     docId: String(item.payload?.docId ?? ""),
     title: String(item.payload?.title ?? ""),
     sourceType:
@@ -164,6 +165,9 @@ async function buildRagChatContext(
     section:
       typeof item.payload?.section === "string" ? item.payload.section : null,
     score: item.score ?? 0,
+    origin: "vector",
+    vectorRank: index + 1,
+    vectorScore: item.score ?? 0,
   }));
 
   const lexicalDocuments = await searchDocumentsLexical(
@@ -172,7 +176,10 @@ async function buildRagChatContext(
     options.documentScope,
   );
   const lexicalSources = buildLexicalSources(input.question, lexicalDocuments, TOP_K * 2);
-  const mergedSources = mergeSources(vectorSources, lexicalSources).slice(0, TOP_K * 2);
+  const mergedSources = fuseSourcesWithRrf(vectorSources, lexicalSources).slice(
+    0,
+    TOP_K * 2,
+  );
   const rerankedSources = rerankSources(input.question, mergedSources).slice(0, TOP_K);
   const bestScore = rerankedSources[0]?.score ?? 0;
   const questionTokens = tokenizeForSearch(input.question);
@@ -244,7 +251,7 @@ function buildLexicalSources(
     lexicalRank: number;
   }>,
   limit: number,
-) {
+): RagSource[] {
   const tokens = tokenizeForSearch(question);
   const sources: RagSource[] = [];
 
@@ -274,22 +281,70 @@ function buildLexicalSources(
     }
   }
 
-  return sources.sort((left, right) => right.score - left.score).slice(0, limit);
+  return sources
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit)
+    .map((source, index) => ({
+      ...source,
+      origin: "lexical",
+      lexicalRank: index + 1,
+      lexicalScore: source.score,
+    }));
 }
 
-function mergeSources(vectorSources: RagSource[], lexicalSources: RagSource[]) {
+function fuseSourcesWithRrf(vectorSources: RagSource[], lexicalSources: RagSource[]) {
   const byKey = new Map<string, RagSource>();
 
-  for (const source of [...vectorSources, ...lexicalSources]) {
+  for (const source of vectorSources) {
+    const key = `${source.docId}:${source.chunkIndex}`;
+    byKey.set(key, source);
+  }
+
+  for (const source of lexicalSources) {
     const key = `${source.docId}:${source.chunkIndex}`;
     const current = byKey.get(key);
 
-    if (!current || source.score > current.score) {
+    if (!current) {
       byKey.set(key, source);
+      continue;
     }
+
+    byKey.set(key, {
+      ...current,
+      origin: "hybrid",
+      lexicalRank: source.lexicalRank,
+      lexicalScore: source.lexicalScore,
+      score: Math.max(current.score, source.score),
+    });
   }
 
-  return [...byKey.values()].sort((left, right) => right.score - left.score);
+  const maxRrfScore = 2 / (RRF_K + 1);
+
+  return [...byKey.values()]
+    .map((source) => {
+      const vectorRrf =
+        typeof source.vectorRank === "number" ? 1 / (RRF_K + source.vectorRank) : 0;
+      const lexicalRrf =
+        typeof source.lexicalRank === "number"
+          ? 1 / (RRF_K + source.lexicalRank)
+          : 0;
+      const rrfScore = (vectorRrf + lexicalRrf) / maxRrfScore;
+      const rawScore = Math.max(source.vectorScore ?? 0, source.lexicalScore ?? 0);
+      const fusedScore = clampScore(rawScore * 0.82 + rrfScore * 0.18);
+
+      return {
+        ...source,
+        rrfScore: Number(rrfScore.toFixed(3)),
+        score: Number(fusedScore.toFixed(3)),
+      };
+    })
+    .sort((left, right) => {
+      if ((right.rrfScore ?? 0) !== (left.rrfScore ?? 0)) {
+        return (right.rrfScore ?? 0) - (left.rrfScore ?? 0);
+      }
+
+      return right.score - left.score;
+    });
 }
 
 function tokenOverlapScore(tokens: string[], text: string) {
@@ -349,6 +404,7 @@ function rerankSources(question: string, sources: RagSource[]) {
       return {
         ...source,
         score: Number(rerankedScore.toFixed(3)),
+        finalScore: Number(rerankedScore.toFixed(3)),
       };
     })
     .sort((left, right) => right.score - left.score);

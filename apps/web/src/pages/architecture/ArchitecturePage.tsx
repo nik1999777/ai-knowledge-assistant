@@ -93,15 +93,21 @@ const STAGES: StageInfo[] = [
   {
     id: "index",
     title: "3. Index",
-    subtitle: "Embeddings -> Qdrant, metadata -> Postgres",
+    subtitle: "Embeddings -> Qdrant, metadata -> Postgres, scope isolation",
     goal: "Сохранить документ так, чтобы потом искать и семантически, и лексически.",
     flow: [
       "Для chunk-ов строятся embeddings.",
-      "Вектора и payload сохраняются в Qdrant.",
-      "Metadata + text + search_vector сохраняются в Postgres.",
+      "Вектора и payload сохраняются в Qdrant, включая `documentScope`, `docId`, `chunkIndex`, `section` и текст chunk-а.",
+      "Metadata + text + search_vector сохраняются в Postgres, тоже с `documentScope`.",
       "Один и тот же chunk становится доступен и для vector retrieval, и для lexical search.",
+      "`user` документы отделены от `eval` benchmark документов, чтобы обычный чат и seed eval не загрязняли друг друга.",
     ],
-    metrics: ["index_success_rate", "embedding_latency_ms", "qdrant_upsert_ms"],
+    metrics: [
+      "index_success_rate",
+      "embedding_latency_ms",
+      "qdrant_upsert_ms",
+      "document_scope",
+    ],
     failures: [
       "Несогласованность между Qdrant и Postgres после частичной ошибки.",
       "Слишком долгая генерация embeddings.",
@@ -111,40 +117,57 @@ const STAGES: StageInfo[] = [
       "Зачем хранить вектора отдельно от metadata?",
       "Почему нужна FTS в Postgres, если есть vector search?",
       "Как делаем cleanup при удалении документа?",
+      "Зачем нужен document_scope для eval и user документов?",
     ],
     backendFiles: [
       "apps/api/src/clients/qdrant.client.ts",
       "apps/api/src/repositories/documents.repository.ts",
       "apps/api/src/db/migrations/002_documents_search_vector.sql",
+      "apps/api/src/db/migrations/003_document_scope.sql",
     ],
     frontendFiles: ["apps/web/src/features/documents/api/documents.ts"],
   },
   {
     id: "retrieve",
     title: "4. Retrieve",
-    subtitle: "Vector + lexical, merge + rerank",
+    subtitle: "Vector + lexical -> RRF fusion -> rerank",
     goal: "Найти лучшие фрагменты знаний для конкретного вопроса.",
     flow: [
-      "Вопрос -> embedding -> vector search в Qdrant.",
+      "Вопрос -> embedding -> vector search в Qdrant, сразу с filter по `documentScope`.",
       "Параллельно lexical search в Postgres FTS.",
-      "Кандидаты объединяются, дедуплицируются и rerank-ятся.",
+      "Кандидаты дедуплицируются по `docId:chunkIndex`.",
+      "Reciprocal Rank Fusion (RRF) объединяет ранги vector и lexical кандидатов: если chunk высоко в обоих списках, он получает сильный общий сигнал.",
+      "После RRF применяется легкий local rerank: token overlap, совпадение title/section, phrase bonus и short chunk penalty.",
       "Финальные chunk-ы попадают в `sources` и становятся grounding-контекстом для LLM.",
     ],
-    metrics: ["vector_count", "lexical_count", "merged_count", "reranked_count"],
+    metrics: [
+      "vector_count",
+      "lexical_count",
+      "merged_count",
+      "reranked_count",
+      "origin",
+      "vector_rank",
+      "lexical_rank",
+      "rrf_score",
+      "final_score",
+    ],
     failures: [
       "Vector находит мало кандидатов при узких формулировках.",
       "Lexical шумит на длинных вопросах.",
-      "Неверный rerank усиливает нерелевантные chunk-ы.",
+      "Неверный fusion/rerank усиливает нерелевантные chunk-ы.",
       "Слабый retrieval потом приводит к расплывчатому ответу даже при хорошей модели.",
+      "Без Qdrant scope filter top-K может заполниться чужими eval/user документами еще до дедупликации.",
     ],
     interview: [
       "Почему hybrid retrieval лучше чисто vector?",
-      "Что дает rerank после merge?",
+      "Что дает RRF по сравнению с простым sort по score?",
+      "Почему score vector и score lexical нельзя просто складывать напрямую?",
       "Как дебажить, если есть score, но контекст плохой?",
     ],
     backendFiles: [
       "apps/api/src/modules/chat/chat.service.ts",
       "apps/api/src/repositories/documents.repository.ts",
+      "apps/api/src/clients/qdrant.client.ts",
       "apps/api/src/utils/tokenization.ts",
     ],
     frontendFiles: [
@@ -158,7 +181,7 @@ const STAGES: StageInfo[] = [
     subtitle: "Dual-threshold + guardrails",
     goal: "Решить: отвечаем или безопасно отклоняем вопрос.",
     flow: [
-      "Считается `bestScore` и проверяется сила лучшего chunk-а после rerank.",
+      "Считается `bestScore`: это итоговый score лучшего source после RRF fusion и local rerank.",
       "Срабатывают `declineThreshold` и `answerThreshold`.",
       "В mid-band зоне учитываются `domainEvidence` и дополнительные guardrails.",
       "В debug пишется `decision` и `guardrailReason`, чтобы решение было объяснимым.",
@@ -180,6 +203,7 @@ const STAGES: StageInfo[] = [
       "Почему один threshold хуже dual-threshold?",
       "Как вы выбирали пороги в проекте?",
       "Какие риски у высокого FP vs высокого FN?",
+      "Почему после изменения retrieval нужно снова прогонять `eval:seed`?",
     ],
     backendFiles: [
       "apps/api/src/modules/chat/chat.service.ts",
@@ -240,12 +264,31 @@ export function ArchitecturePage() {
         <Eyebrow>Architecture</Eyebrow>
         <Title>RAG Mind Map: интерактивный разбор проекта</Title>
         <Subtitle>
-          Это живая шпаргалка по пайплайну. Я сохранил полный каркас страницы, а
-          в блоки про retrieval, decision policy, generation и debug добавил
-          больше прозрачности: как система принимает решение, как читать метрики
-          в каждом ответе и как связывать UI с реальным поведением модели.
+          Это живая шпаргалка по пайплайну. Здесь зафиксировано, как документы
+          проходят ingestion, как user/eval scope изолирует данные, как hybrid
+          retrieval использует RRF, и какие debug-поля смотреть, чтобы понять,
+          почему конкретный chunk попал в ответ.
         </Subtitle>
       </IntroCard>
+
+      <SectionCard>
+        <SectionTitle>Текущая версия пайплайна</SectionTitle>
+        <StageGoal>
+          Документ загружается в Postgres и Qdrant с `documentScope`. Вопрос
+          идет одновременно в vector search и lexical search. Затем RRF
+          объединяет ранги, local rerank уточняет порядок, decision policy
+          решает отвечать или declined, а UI показывает answer, sources, timing
+          и retrieval debug.
+        </StageGoal>
+        <TagList>
+          <MetricTag>document_scope: user/eval</MetricTag>
+          <MetricTag>Qdrant scope filter</MetricTag>
+          <MetricTag>Postgres FTS</MetricTag>
+          <MetricTag>RRF_K=60</MetricTag>
+          <MetricTag>origin: vector/lexical/hybrid</MetricTag>
+          <MetricTag>final_score</MetricTag>
+        </TagList>
+      </SectionCard>
 
       <SectionCard>
         <SectionTitle>Mind Map (кликни этап)</SectionTitle>

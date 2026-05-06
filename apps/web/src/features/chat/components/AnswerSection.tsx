@@ -162,9 +162,18 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                           <Meta>
                             docId: {source.docId} • chunk: {source.chunkIndex}
                           </Meta>
+                          <Meta>
+                            origin: {formatOrigin(source.origin)} • vector:{" "}
+                            {formatRankScore(source.vectorRank, source.vectorScore)} •
+                            lexical:{" "}
+                            {formatRankScore(source.lexicalRank, source.lexicalScore)} •
+                            RRF: {formatNumber(source.rrfScore)}
+                          </Meta>
                         </div>
 
-                        <ScoreBadge>{source.score.toFixed(3)}</ScoreBadge>
+                        <ScoreBadge>
+                          final {formatNumber(source.finalScore ?? source.score)}
+                        </ScoreBadge>
                       </SourceHeader>
 
                       <SourceText>{source.text}</SourceText>
@@ -390,6 +399,27 @@ const NoSources = styled.p`
 
 function formatNumber(value?: number) {
   return typeof value === "number" ? value.toFixed(3) : "—";
+}
+
+function formatRankScore(rank?: number, score?: number) {
+  if (typeof rank !== "number" && typeof score !== "number") {
+    return "—";
+  }
+
+  return `#${rank ?? "?"} / ${formatNumber(score)}`;
+}
+
+function formatOrigin(origin?: "vector" | "lexical" | "hybrid") {
+  switch (origin) {
+    case "vector":
+      return "vector";
+    case "lexical":
+      return "lexical";
+    case "hybrid":
+      return "hybrid";
+    default:
+      return "unknown";
+  }
 }
 
 function formatGuardrailReason(reason?: string) {

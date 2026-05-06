@@ -257,9 +257,15 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
               <SourcePreviewHeader>
                 <strong>{source.title}</strong>
                 <span>
-                  chunk {source.chunkIndex} · {source.score.toFixed(3)}
+                  chunk {source.chunkIndex} · {source.origin ?? "unknown"} · final{" "}
+                  {source.score.toFixed(3)}
                 </span>
               </SourcePreviewHeader>
+              <SourcePreviewMeta>
+                vector: {formatRankScore(source.vectorRank, source.vectorScore)} ·
+                lexical: {formatRankScore(source.lexicalRank, source.lexicalScore)} ·
+                RRF: {formatOptionalNumber(source.rrfScore)}
+              </SourcePreviewMeta>
               <SourcePreviewText>{source.textPreview}</SourcePreviewText>
             </SourcePreview>
           ))}
@@ -589,6 +595,12 @@ const SourcePreviewHeader = styled.div`
   }
 `;
 
+const SourcePreviewMeta = styled.div`
+  margin: 0 0 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+`;
+
 const SourcePreviewText = styled.p`
   margin: 0;
   color: var(--text-secondary);
@@ -602,6 +614,14 @@ function formatPercent(value: number) {
 
 function formatOptionalNumber(value?: number) {
   return typeof value === "number" ? value.toFixed(3) : "—";
+}
+
+function formatRankScore(rank?: number, score?: number) {
+  if (typeof rank !== "number" && typeof score !== "number") {
+    return "—";
+  }
+
+  return `#${rank ?? "?"} / ${formatOptionalNumber(score)}`;
 }
 
 function formatDate(value: string) {

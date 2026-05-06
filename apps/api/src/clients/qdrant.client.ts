@@ -68,11 +68,21 @@ export async function saveChunks(
 export async function searchSimilar(
   vector: number[],
   limit = 3,
-  _scope: DocumentScope = "user",
+  scope: DocumentScope = "user",
 ) {
   return qdrant.search(COLLECTION_NAME, {
     vector,
     limit,
+    filter: {
+      must: [
+        {
+          key: "documentScope",
+          match: {
+            value: scope,
+          },
+        },
+      ],
+    },
     with_payload: true,
   });
 }
