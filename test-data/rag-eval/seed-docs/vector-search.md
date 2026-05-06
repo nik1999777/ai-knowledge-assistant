@@ -1,16 +1,16 @@
-# Vector Search Notes
+# Заметки о vector search
 
-Embeddings are numeric vector representations of text. Similar meanings should produce vectors that are close to each other in vector space.
+Embeddings — это числовые векторные представления текста. Тексты с похожим смыслом должны иметь близкие векторы в векторном пространстве.
 
-Vector search finds chunks whose embeddings are similar to the question embedding. This is useful when the user asks with different wording than the original document.
+Vector search ищет chunk-и, embeddings которых похожи на embedding вопроса. Это полезно, когда пользователь формулирует вопрос другими словами, чем написано в исходном документе.
 
-Qdrant is the vector database in this project. It stores chunk embeddings and payload metadata such as `docId`, `title`, `chunkIndex`, `section`, and the chunk text.
+Qdrant — это vector database в этом проекте. Он хранит embeddings chunk-ов и payload metadata: `docId`, `title`, `chunkIndex`, `section` и текст chunk-а.
 
-Similarity search is handled by Qdrant. The application sends a question embedding to Qdrant and receives the nearest chunks with similarity scores.
+Similarity search выполняет Qdrant. Приложение отправляет embedding вопроса в Qdrant и получает ближайшие chunk-и с similarity score.
 
-Lexical search is different from vector search. Lexical search matches words and tokens, while vector search matches semantic similarity.
+Lexical search отличается от vector search. Lexical search ищет совпадения по словам и токенам, а vector search ищет семантическую близость.
 
-Hybrid retrieval combines vector candidates with lexical candidates. It is often better than either method alone because semantic search and keyword search fail in different ways.
+Hybrid retrieval объединяет vector candidates и lexical candidates. Часто он лучше, чем каждый метод отдельно, потому что semantic search и keyword search ошибаются по-разному.
 
-Reranking is a second scoring step after retrieval. It reorders candidate chunks so the final context sent to the language model is more relevant.
+Reranking — это второй этап скоринга после retrieval. Он переупорядочивает candidate chunk-и, чтобы итоговый контекст для языковой модели был релевантнее.
 

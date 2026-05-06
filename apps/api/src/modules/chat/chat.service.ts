@@ -1,7 +1,8 @@
 import { env } from "../../config/env.js";
 import { searchSimilar } from "../../clients/qdrant.client.js";
 import {
-  getExistingDocumentIds,
+  type DocumentScope,
+  getExistingDocumentIdsByScope,
   searchDocumentsLexical,
 } from "../../repositories/documents.repository.js";
 import { chunkDocument } from "../../services/chunk.service.js";
@@ -42,9 +43,12 @@ type RagChatContext = {
 export async function streamChatWithKnowledgeBase(
   input: ChatInput,
   onChunk: StreamChunkHandler,
+  options: { documentScope?: DocumentScope } = {},
 ): Promise<{ answer: string; meta: Omit<ChatStreamMeta, "sessionId"> }> {
   const totalStart = performance.now();
-  const context = await buildRagChatContext(input);
+  const context = await buildRagChatContext(input, {
+    documentScope: options.documentScope ?? "user",
+  });
 
   if (context.shouldDecline) {
     const answer = "Я не знаю на основе предоставленных данных.";
@@ -119,19 +123,23 @@ export async function streamChatWithKnowledgeBase(
   };
 }
 
-async function buildRagChatContext(input: ChatInput): Promise<RagChatContext> {
+async function buildRagChatContext(
+  input: ChatInput,
+  options: { documentScope: DocumentScope },
+): Promise<RagChatContext> {
   const { result: questionEmbedding, ms: embeddingMs } = await measureTime(() =>
     getEmbedding(input.question),
   );
 
   const { result: rawResults, ms: searchMs } = await measureTime(() =>
-    searchSimilar(questionEmbedding, TOP_K * 2),
+    searchSimilar(questionEmbedding, TOP_K * 2, options.documentScope),
   );
 
-  const existingDocIds = await getExistingDocumentIds(
+  const existingDocIds = await getExistingDocumentIdsByScope(
     rawResults
       .map((item) => item.payload?.docId)
       .filter((docId): docId is string => typeof docId === "string" && docId.length > 0),
+    options.documentScope,
   );
 
   const vectorResults = rawResults.filter((item) => {
@@ -158,7 +166,11 @@ async function buildRagChatContext(input: ChatInput): Promise<RagChatContext> {
     score: item.score ?? 0,
   }));
 
-  const lexicalDocuments = await searchDocumentsLexical(input.question, TOP_K * 2);
+  const lexicalDocuments = await searchDocumentsLexical(
+    input.question,
+    TOP_K * 2,
+    options.documentScope,
+  );
   const lexicalSources = buildLexicalSources(input.question, lexicalDocuments, TOP_K * 2);
   const mergedSources = mergeSources(vectorSources, lexicalSources).slice(0, TOP_K * 2);
   const rerankedSources = rerankSources(input.question, mergedSources).slice(0, TOP_K);

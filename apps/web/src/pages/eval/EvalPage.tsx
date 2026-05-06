@@ -69,7 +69,7 @@ export function EvalPage() {
           <ModeHint>
             {reportMode === "seed"
               ? "Команда: cd apps/api && npm run eval:seed"
-              : "Команда: cd apps/api && npm run eval:rag"}
+              : "Команда: cd apps/api && npm run eval:current"}
           </ModeHint>
           <MetaLine>Последний прогон: {formatDate(report.generatedAt)}</MetaLine>
 

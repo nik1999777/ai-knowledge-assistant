@@ -1,19 +1,19 @@
-# Ollama Local Stack
+# Локальный стек Ollama
 
-Ollama is used in this project as the local model runtime.
+Ollama используется в этом проекте как локальный runtime для моделей.
 
-The API calls Ollama for two different tasks:
+API обращается к Ollama для двух разных задач:
 
-1. Embeddings: the `nomic-embed-text` model turns document chunks and user questions into vectors.
-2. Generation: the `llama3` model generates the final answer from the grounded prompt.
+1. Embeddings: модель `nomic-embed-text` превращает chunk-и документов и вопросы пользователя в векторы.
+2. Generation: модель `llama3` генерирует итоговый ответ из grounded prompt.
 
-The local stack also includes Postgres and Qdrant.
+Локальный стек также включает Postgres и Qdrant.
 
-Postgres stores document metadata, full extracted text, full-text search vectors, chat sessions, and chat messages.
+Postgres хранит metadata документов, полный извлеченный текст, full-text search vectors, chat sessions и chat messages.
 
-Qdrant stores vector embeddings for document chunks and supports similarity search.
+Qdrant хранит vector embeddings для chunk-ов документов и поддерживает similarity search.
 
-The Fastify API coordinates the RAG pipeline. It parses uploaded documents, creates chunks, requests embeddings from Ollama, writes metadata to Postgres, writes vectors to Qdrant, retrieves context, applies answerability rules, and streams the final answer.
+Fastify API координирует RAG pipeline. Он парсит загруженные документы, создает chunk-и, запрашивает embeddings у Ollama, пишет metadata в Postgres, пишет векторы в Qdrant, достает контекст, применяет answerability rules и стримит итоговый ответ.
 
-The React frontend lets the user upload documents, chat with the knowledge base, inspect sources, and review eval metrics.
+React frontend позволяет пользователю загружать документы, общаться с knowledge base, смотреть источники и проверять eval metrics.
 

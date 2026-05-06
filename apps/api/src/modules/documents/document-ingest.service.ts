@@ -6,9 +6,11 @@ import { saveChunks } from "../../clients/qdrant.client.js";
 import { createAppError } from "../../utils/app-error.js";
 
 import type { IngestResponse } from "./documents.types.js";
+import type { DocumentScope } from "../../repositories/documents.repository.js";
 
 export async function ingestUploadedDocument(input: {
   docId?: string;
+  documentScope?: DocumentScope;
   fileName: string;
   mimeType?: string;
   buffer: Buffer;
@@ -27,6 +29,7 @@ export async function ingestUploadedDocument(input: {
 
   await createDocument({
     docId,
+    documentScope: input.documentScope ?? "user",
     title: parsedDocument.title,
     sourceType: parsedDocument.sourceType,
     originalFileName: input.fileName,
@@ -39,6 +42,7 @@ export async function ingestUploadedDocument(input: {
   try {
     await saveChunks(
       docId,
+      input.documentScope ?? "user",
       parsedDocument.title,
       parsedDocument.sourceType,
       chunks,

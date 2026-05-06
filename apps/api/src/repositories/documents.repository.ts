@@ -5,9 +5,11 @@ import { tokenizeForSearch } from "../utils/tokenization.js";
 const pool = getPostgresPool();
 
 export type DocumentSourceType = "txt" | "md" | "pdf" | "docx";
+export type DocumentScope = "user" | "eval";
 
 export type CreateDocumentInput = {
   docId: string;
+  documentScope?: DocumentScope;
   title: string;
   sourceType: DocumentSourceType;
   originalFileName: string;
@@ -18,11 +20,13 @@ export type CreateDocumentInput = {
 };
 
 export type ListDocumentsInput = {
+  scope?: DocumentScope;
   query?: string;
 };
 
 export type LexicalDocumentMatch = {
   docId: string;
+  documentScope: DocumentScope;
   title: string;
   sourceType: DocumentSourceType;
   textContent: string;
@@ -31,6 +35,7 @@ export type LexicalDocumentMatch = {
 
 type DocumentRow = {
   doc_id: string;
+  document_scope: DocumentScope;
   title: string;
   source_type: DocumentSourceType;
   original_file_name: string;
@@ -47,6 +52,7 @@ export async function createDocument(input: CreateDocumentInput) {
     `
       INSERT INTO documents (
         doc_id,
+        document_scope,
         title,
         source_type,
         original_file_name,
@@ -55,10 +61,11 @@ export async function createDocument(input: CreateDocumentInput) {
         chunks_count,
         warnings
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
     `,
     [
       input.docId,
+      input.documentScope ?? "user",
       input.title,
       input.sourceType,
       input.originalFileName,
@@ -75,6 +82,7 @@ export async function deleteDocumentRecordByDocId(docId: string) {
 }
 
 export async function listDocuments(input: ListDocumentsInput = {}) {
+  const scope = input.scope ?? "user";
   const trimmedQuery = input.query?.trim();
   const tokens = trimmedQuery ? tokenizeLexicalQuery(trimmedQuery) : [];
   const tsQuery = tokens.length > 0 ? buildTsQuery(tokens, "relaxed") : null;
@@ -84,18 +92,20 @@ export async function listDocuments(input: ListDocumentsInput = {}) {
         `
           SELECT doc_id, title
           FROM documents
-          WHERE search_vector @@ to_tsquery('simple', $1)
+          WHERE document_scope = $2
+            AND search_vector @@ to_tsquery('simple', $1)
           ORDER BY
             ts_rank_cd(search_vector, to_tsquery('simple', $1)) DESC,
             updated_at DESC
         `,
-        [tsQuery],
+        [tsQuery, scope],
       )
     : await pool.query<{ doc_id: string; title: string }>(`
         SELECT doc_id, title
         FROM documents
+        WHERE document_scope = $1
         ORDER BY updated_at DESC
-      `);
+      `, [scope]);
 
   return result.rows.map((row) => ({
     docId: row.doc_id,
@@ -108,6 +118,7 @@ export async function getDocumentByDocId(docId: string) {
     `
       SELECT
         doc_id,
+        document_scope,
         title,
         source_type,
         original_file_name,
@@ -132,6 +143,7 @@ export async function getDocumentByDocId(docId: string) {
 
   return {
     docId: row.doc_id,
+    documentScope: row.document_scope,
     title: row.title,
     sourceType: row.source_type,
     originalFileName: row.original_file_name,
@@ -145,6 +157,13 @@ export async function getDocumentByDocId(docId: string) {
 }
 
 export async function getExistingDocumentIds(docIds: string[]) {
+  return getExistingDocumentIdsByScope(docIds, "user");
+}
+
+export async function getExistingDocumentIdsByScope(
+  docIds: string[],
+  scope: DocumentScope,
+) {
   if (docIds.length === 0) {
     return new Set<string>();
   }
@@ -153,9 +172,10 @@ export async function getExistingDocumentIds(docIds: string[]) {
     `
       SELECT doc_id
       FROM documents
-      WHERE doc_id = ANY($1::text[])
+      WHERE document_scope = $2
+        AND doc_id = ANY($1::text[])
     `,
-    [docIds],
+    [docIds, scope],
   );
 
   return new Set(result.rows.map((row) => row.doc_id));
@@ -164,6 +184,7 @@ export async function getExistingDocumentIds(docIds: string[]) {
 export async function searchDocumentsLexical(
   query: string,
   limit = 8,
+  scope: DocumentScope = "user",
 ): Promise<LexicalDocumentMatch[]> {
   const normalizedQuery = query.trim();
   const tokens = tokenizeLexicalQuery(normalizedQuery);
@@ -181,6 +202,7 @@ export async function searchDocumentsLexical(
 
   const result = await pool.query<{
     doc_id: string;
+    document_scope: DocumentScope;
     title: string;
     source_type: DocumentSourceType;
     text_content: string;
@@ -190,6 +212,7 @@ export async function searchDocumentsLexical(
       WITH strict_matches AS (
         SELECT
           d.doc_id,
+          d.document_scope,
           d.title,
           d.source_type,
           d.text_content,
@@ -203,11 +226,13 @@ export async function searchDocumentsLexical(
             END
           ) AS lexical_rank
         FROM documents d
-        WHERE d.search_vector @@ to_tsquery('simple', $1)
+        WHERE d.document_scope = $5
+          AND d.search_vector @@ to_tsquery('simple', $1)
       ),
       relaxed_matches AS (
         SELECT
           d.doc_id,
+          d.document_scope,
           d.title,
           d.source_type,
           d.text_content,
@@ -221,10 +246,11 @@ export async function searchDocumentsLexical(
             END
           ) AS lexical_rank
         FROM documents d
-        WHERE d.search_vector @@ to_tsquery('simple', $2)
+        WHERE d.document_scope = $5
+          AND d.search_vector @@ to_tsquery('simple', $2)
           AND NOT (d.search_vector @@ to_tsquery('simple', $1))
       )
-      SELECT doc_id, title, source_type, text_content, lexical_rank
+      SELECT doc_id, document_scope, title, source_type, text_content, lexical_rank
       FROM (
         SELECT * FROM strict_matches
         UNION ALL
@@ -233,11 +259,12 @@ export async function searchDocumentsLexical(
       ORDER BY lexical_rank DESC, updated_at DESC
       LIMIT $4
     `,
-    [strictTsQuery, relaxedTsQuery, `%${normalizedQuery}%`, limit],
+    [strictTsQuery, relaxedTsQuery, `%${normalizedQuery}%`, limit, scope],
   );
 
   return result.rows.map((row) => ({
     docId: row.doc_id,
+    documentScope: row.document_scope,
     title: row.title,
     sourceType: row.source_type,
     textContent: row.text_content,

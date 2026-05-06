@@ -2,6 +2,7 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import { env } from "../config/env.js";
 import type { ParsedDocument } from "../services/document-parser.service.js";
 import type { TextChunk } from "../services/chunk.service.js";
+import type { DocumentScope } from "../repositories/documents.repository.js";
 
 const QDRANT_URL = env.QDRANT_URL;
 const COLLECTION_NAME = "documents";
@@ -29,6 +30,7 @@ export async function initCollection() {
   }
 
   await ensurePayloadIndex("docId", "keyword");
+  await ensurePayloadIndex("documentScope", "keyword");
 }
 
 export async function checkQdrantConnection() {
@@ -37,6 +39,7 @@ export async function checkQdrantConnection() {
 
 export async function saveChunks(
   docId: string,
+  documentScope: DocumentScope,
   title: string,
   sourceType: ParsedDocument["sourceType"],
   chunks: TextChunk[],
@@ -47,6 +50,7 @@ export async function saveChunks(
     vector: embeddings[index],
     payload: {
       docId,
+      documentScope,
       title,
       sourceType,
       text: chunk.text,
@@ -61,7 +65,11 @@ export async function saveChunks(
   });
 }
 
-export async function searchSimilar(vector: number[], limit = 3) {
+export async function searchSimilar(
+  vector: number[],
+  limit = 3,
+  _scope: DocumentScope = "user",
+) {
   return qdrant.search(COLLECTION_NAME, {
     vector,
     limit,

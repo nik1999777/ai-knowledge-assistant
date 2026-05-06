@@ -5,8 +5,8 @@
     "question": "Что такое RAG?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["retrieval", "generation", "context"],
-      "sourceKeywords": ["Retrieval-Augmented Generation", "retrieves relevant knowledge"]
+      "answerKeywords": ["контекст", "документ", "модель"],
+      "sourceKeywords": ["сначала ищет релевантные знания", "языковой модели"]
     }
   },
   {
@@ -15,18 +15,18 @@
     "question": "Почему RAG снижает галлюцинации?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["context", "documents", "facts"],
-      "sourceKeywords": ["reduce hallucinations", "retrieved context"]
+      "answerKeywords": ["контекст", "факты", "знаний"],
+      "sourceKeywords": ["снижает галлюцинации", "найденному контексту"]
     }
   },
   {
     "id": "seed-003",
     "category": "answerable",
-    "question": "Зачем разбивать документ на chunks?",
+    "question": "Зачем разбивать документ на chunk-и?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["retrieval", "precise", "context"],
-      "sourceKeywords": ["Chunking matters", "retrieval more precise"]
+      "answerKeywords": ["retrieval", "точнее", "контекст"],
+      "sourceKeywords": ["Chunking важен", "retrieval точнее"]
     }
   },
   {
@@ -35,18 +35,18 @@
     "question": "Что такое embeddings?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["numeric", "vector", "text"],
-      "sourceKeywords": ["numeric vector representations"]
+      "answerKeywords": ["числовые", "векторные", "текста"],
+      "sourceKeywords": ["числовые векторные представления текста"]
     }
   },
   {
     "id": "seed-005",
     "category": "exact",
-    "question": "Какой компонент отвечает за similarity search?",
+    "question": "Какой компонент выполняет similarity search?",
     "expected": {
       "answerable": true,
       "answerKeywords": ["Qdrant", "similarity search"],
-      "sourceKeywords": ["Similarity search is handled by Qdrant"]
+      "sourceKeywords": ["Similarity search выполняет Qdrant"]
     }
   },
   {
@@ -55,8 +55,8 @@
     "question": "Чем lexical search отличается от vector search?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["words", "semantic", "similarity"],
-      "sourceKeywords": ["Lexical search matches words", "vector search matches semantic similarity"]
+      "answerKeywords": ["слова", "токены", "семантическую"],
+      "sourceKeywords": ["Lexical search ищет совпадения по словам", "vector search ищет семантическую близость"]
     }
   },
   {
@@ -65,8 +65,8 @@
     "question": "Что дает hybrid retrieval?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["vector", "lexical", "better"],
-      "sourceKeywords": ["Hybrid retrieval combines vector candidates with lexical candidates"]
+      "answerKeywords": ["vector", "lexical", "лучше"],
+      "sourceKeywords": ["Hybrid retrieval объединяет vector candidates и lexical candidates"]
     }
   },
   {
@@ -82,7 +82,7 @@
   {
     "id": "seed-009",
     "category": "exact",
-    "question": "Какая модель используется для генерации?",
+    "question": "Какая модель используется для генерации ответа?",
     "expected": {
       "answerable": true,
       "answerKeywords": ["llama3"],
@@ -95,8 +95,8 @@
     "question": "Что хранит Postgres в этом проекте?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["metadata", "chat", "messages"],
-      "sourceKeywords": ["Postgres stores document metadata", "chat sessions"]
+      "answerKeywords": ["metadata", "текст", "chat"],
+      "sourceKeywords": ["Postgres хранит metadata документов", "chat sessions"]
     }
   },
   {
@@ -105,8 +105,8 @@
     "question": "Что хранит Qdrant?",
     "expected": {
       "answerable": true,
-      "answerKeywords": ["embeddings", "chunks", "similarity"],
-      "sourceKeywords": ["Qdrant stores vector embeddings"]
+      "answerKeywords": ["embeddings", "chunk", "similarity"],
+      "sourceKeywords": ["Qdrant хранит vector embeddings"]
     }
   },
   {

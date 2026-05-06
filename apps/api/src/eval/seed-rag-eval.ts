@@ -43,6 +43,7 @@ async function main() {
     const buffer = await readFile(filePath);
     const result = await ingestUploadedDocument({
       docId: seedDoc.docId,
+      documentScope: "eval",
       fileName: seedDoc.fileName,
       mimeType: "text/markdown",
       buffer,
@@ -58,6 +59,7 @@ async function main() {
     reportPath,
     label: "seed-eval",
     allowedSourceDocIds: new Set(SEED_DOCS.map((doc) => doc.docId)),
+    documentScope: "eval",
   });
 }
 

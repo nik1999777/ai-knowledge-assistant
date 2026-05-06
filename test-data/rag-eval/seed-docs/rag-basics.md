@@ -1,17 +1,17 @@
-# RAG Basics
+# Основы RAG
 
-Retrieval-Augmented Generation, or RAG, is a pattern where an application retrieves relevant knowledge before asking a language model to answer.
+Retrieval-Augmented Generation, или RAG, — это подход, при котором приложение сначала ищет релевантные знания, а затем передает их языковой модели для ответа.
 
-The goal of RAG is to ground the answer in documents that the application controls. Instead of relying only on model memory, the system passes retrieved context into the prompt.
+Цель RAG — заземлить ответ в документах, которые контролирует приложение. Вместо ответа только из памяти модели система добавляет найденный контекст в prompt.
 
-RAG usually has two flows:
+У RAG обычно есть два потока:
 
-1. Ingestion: parse documents, split them into chunks, create embeddings, and store searchable records.
-2. Query answering: embed the user question, retrieve relevant chunks, build a grounded prompt, and generate an answer.
+1. Ingestion: распарсить документы, разбить их на chunk-и, создать embeddings и сохранить поисковые записи.
+2. Ответ на вопрос: создать embedding вопроса, найти релевантные chunk-и, собрать grounded prompt и сгенерировать ответ.
 
-Chunking matters because long documents are too large and noisy to pass into a prompt directly. Smaller chunks make retrieval more precise, while overlap helps preserve context across chunk boundaries.
+Chunking важен, потому что длинные документы слишком большие и шумные для прямой передачи в prompt. Небольшие chunk-и делают retrieval точнее, а overlap помогает сохранить контекст на границах chunk-ов.
 
-A good RAG system should cite sources, measure retrieval quality, and decline questions when the retrieved context is not enough.
+Хорошая RAG-система должна показывать источники, измерять качество retrieval и отказываться от ответа, если найденного контекста недостаточно.
 
-RAG can reduce hallucinations because the model is instructed to answer from retrieved context rather than inventing facts from general training data.
+RAG снижает галлюцинации, потому что модель получает инструкцию отвечать по найденному контексту, а не придумывать факты из общих знаний.
 

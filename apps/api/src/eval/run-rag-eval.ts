@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { streamChatWithKnowledgeBase } from "../modules/chat/chat.service.js";
+import type { DocumentScope } from "../repositories/documents.repository.js";
 import { initCollection } from "../clients/qdrant.client.js";
 import { initPostgres } from "../db/postgres.client.js";
 import { runMigrations } from "../db/migrator.js";
@@ -36,6 +37,7 @@ type EvalSourceSnapshot = {
 type RunRagEvalOptions = {
   allowedSourceDocIds?: Set<string>;
   datasetPath: string;
+  documentScope?: DocumentScope;
   label?: string;
   reportPath: string;
 };
@@ -129,7 +131,7 @@ export async function runRagEval(options: RunRagEvalOptions) {
 
 async function evaluateCase(
   testCase: EvalCase,
-  options: Pick<RunRagEvalOptions, "allowedSourceDocIds"> = {},
+  options: Pick<RunRagEvalOptions, "allowedSourceDocIds" | "documentScope"> = {},
 ): Promise<EvalCaseResult> {
   let answer = "";
 
@@ -139,6 +141,9 @@ async function evaluateCase(
     },
     (chunk) => {
       answer += chunk;
+    },
+    {
+      documentScope: options.documentScope ?? "user",
     },
   );
 

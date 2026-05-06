@@ -59,10 +59,10 @@ Open `http://localhost:5173`.
 
 There are two eval modes.
 
-Run against the current mutable knowledge base:
+Run against the current mutable user knowledge base:
 
 ```bash
-npm run eval:rag
+npm run eval:current
 ```
 
 Run the reproducible seed benchmark:
@@ -73,4 +73,6 @@ npm run eval:seed
 
 `eval:seed` reindexes fixed documents from `test-data/rag-eval/seed-docs`, runs `questions.seed.json`, and writes `test-data/rag-eval/last-seed-report.json`.
 
-Use `eval:seed` when changing retrieval, prompt, thresholds, or reranking logic. Use `eval:rag` only when the current uploaded documents match `questions.json`.
+`npm run eval:rag` is kept as an alias for `eval:current`.
+
+Use `eval:seed` when changing retrieval, prompt, thresholds, or reranking logic. Use `eval:current` only when the current uploaded user documents match `questions.json`.
