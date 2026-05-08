@@ -27,6 +27,10 @@ export type EvalCaseResult = {
   policyDeclined?: boolean;
   modelDeclined?: boolean;
   promptVersion?: string | null;
+  generationOptions?: {
+    temperature: number;
+    seed: number;
+  } | null;
   bestScore: number;
   domainEvidence?: number;
   guardrailReason?: string | null;

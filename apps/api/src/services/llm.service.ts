@@ -3,12 +3,18 @@ import { postOllamaJson, postOllamaStream } from "../clients/ollama.client.js";
 
 type StreamChunkHandler = (chunk: string) => void;
 
+export const LLM_GENERATION_OPTIONS = {
+  temperature: env.OLLAMA_LLM_TEMPERATURE,
+  seed: env.OLLAMA_LLM_SEED,
+};
+
 export async function askLLM(prompt: string): Promise<string> {
   const data = await postOllamaJson<{ response: string }>(
     "/api/generate",
     {
       model: env.OLLAMA_LLM_MODEL,
       prompt,
+      options: LLM_GENERATION_OPTIONS,
       stream: false,
     },
     "LLM request",
@@ -26,6 +32,7 @@ export async function streamLLM(
     {
       model: env.OLLAMA_LLM_MODEL,
       prompt,
+      options: LLM_GENERATION_OPTIONS,
       stream: true,
     },
     "LLM request",

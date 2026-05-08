@@ -7,7 +7,10 @@ import {
 } from "../../repositories/documents.repository.js";
 import { chunkDocument } from "../../services/chunk.service.js";
 import { getEmbedding } from "../../services/embeddings.service.js";
-import { streamLLM } from "../../services/llm.service.js";
+import {
+  LLM_GENERATION_OPTIONS,
+  streamLLM,
+} from "../../services/llm.service.js";
 import {
   RAG_PROMPT_VERSION,
   buildRagPrompt,
@@ -76,6 +79,7 @@ export async function streamChatWithKnowledgeBase(
           declineThreshold: DECLINE_SCORE_THRESHOLD,
           answerThreshold: ANSWER_SCORE_THRESHOLD,
           promptVersion: RAG_PROMPT_VERSION,
+          generationOptions: LLM_GENERATION_OPTIONS,
           topK: TOP_K,
           decision: "declined",
           domainEvidence: context.domainEvidence,
@@ -117,6 +121,7 @@ export async function streamChatWithKnowledgeBase(
         declineThreshold: DECLINE_SCORE_THRESHOLD,
         answerThreshold: ANSWER_SCORE_THRESHOLD,
         promptVersion: RAG_PROMPT_VERSION,
+        generationOptions: LLM_GENERATION_OPTIONS,
         topK: TOP_K,
         decision: "answered",
         domainEvidence: context.domainEvidence,

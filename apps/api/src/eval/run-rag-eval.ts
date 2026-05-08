@@ -73,6 +73,10 @@ type EvalCaseResult = {
   policyDeclined: boolean;
   modelDeclined: boolean;
   promptVersion: string | null;
+  generationOptions: {
+    temperature: number;
+    seed: number;
+  } | null;
   bestScore: number;
   domainEvidence: number;
   guardrailReason: string | null;
@@ -211,6 +215,7 @@ async function evaluateCase(
     policyDeclined: decisionDeclined,
     modelDeclined: answerDeclined,
     promptVersion: meta.debug.promptVersion ?? null,
+    generationOptions: meta.debug.generationOptions ?? null,
     bestScore: meta.bestScore,
     domainEvidence: meta.debug.domainEvidence ?? 0,
     guardrailReason: meta.debug.guardrailReason ?? null,

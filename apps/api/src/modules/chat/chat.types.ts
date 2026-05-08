@@ -30,6 +30,10 @@ export type RagDebug = {
   declineThreshold?: number;
   answerThreshold?: number;
   promptVersion?: string;
+  generationOptions?: {
+    temperature: number;
+    seed: number;
+  };
   topK: number;
   decision: "answered" | "declined";
   lexicalCount?: number;

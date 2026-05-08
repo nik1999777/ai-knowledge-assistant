@@ -9,6 +9,8 @@ const envSchema = z.object({
   POSTGRES_URL: z.string().min(1),
   OLLAMA_LLM_MODEL: z.string(),
   OLLAMA_EMBED_MODEL: z.string(),
+  OLLAMA_LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0),
+  OLLAMA_LLM_SEED: z.coerce.number().int().default(42),
   RELEVANCE_THRESHOLD: z.coerce.number().default(0.714),
   DECLINE_SCORE_THRESHOLD: z.coerce.number().default(0.45),
   ANSWER_SCORE_THRESHOLD: z.coerce.number().default(0.47),

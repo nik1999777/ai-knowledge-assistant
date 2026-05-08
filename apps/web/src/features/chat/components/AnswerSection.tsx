@@ -103,6 +103,11 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                 </CompactItem>
 
                 <CompactItem>
+                  <TimingLabel>Generation</TimingLabel>
+                  <strong>{formatGenerationOptions(data.debug.generationOptions)}</strong>
+                </CompactItem>
+
+                <CompactItem>
                   <TimingLabel>Guardrail reason</TimingLabel>
                   <strong>{guardrailReasonLabel}</strong>
                 </CompactItem>
@@ -413,6 +418,16 @@ function formatSourceSpan(startOffset?: number, endOffset?: number) {
   }
 
   return ` • span: ${startOffset}-${endOffset}`;
+}
+
+function formatGenerationOptions(
+  options?: { temperature: number; seed: number },
+) {
+  if (!options) {
+    return "unknown";
+  }
+
+  return `temp ${options.temperature} / seed ${options.seed}`;
 }
 
 function formatRankScore(rank?: number, score?: number) {

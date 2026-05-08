@@ -252,6 +252,7 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
         <span>policy: {result.policyDeclined ? "declined" : "answered"}</span>
         <span>model: {result.modelDeclined ? "declined" : "answered"}</span>
         <span>prompt: {result.promptVersion ?? "unknown"}</span>
+        <span>generation: {formatGenerationOptions(result.generationOptions)}</span>
         <span>score: {result.bestScore.toFixed(3)}</span>
         <span>decision: {result.decision ?? "unknown"}</span>
         <span>guardrail: {result.guardrailReason ?? "none"}</span>
@@ -651,6 +652,16 @@ function formatSourceSpan(startOffset?: number, endOffset?: number) {
   }
 
   return ` · span: ${startOffset}-${endOffset}`;
+}
+
+function formatGenerationOptions(
+  options?: { temperature: number; seed: number } | null,
+) {
+  if (!options) {
+    return "unknown";
+  }
+
+  return `temp ${options.temperature} / seed ${options.seed}`;
 }
 
 function getModeCommand(mode: EvalReportMode) {

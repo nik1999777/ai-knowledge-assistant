@@ -90,6 +90,17 @@ Each chat response stores `debug.promptVersion`. Eval results also record the
 prompt version so quality reports can be tied to the prompt behavior that
 produced them.
 
+## Generation Options
+
+Ollama generation is configured explicitly for repeatable local eval:
+
+- `OLLAMA_LLM_TEMPERATURE`, default `0`
+- `OLLAMA_LLM_SEED`, default `42`
+
+These values are passed through Ollama `/api/generate` `options` for both
+streaming chat and non-streaming LLM calls. Each chat/eval debug payload stores
+them as `debug.generationOptions`.
+
 ## Retrieval
 
 Retrieval is hybrid:
