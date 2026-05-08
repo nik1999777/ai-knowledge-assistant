@@ -23,6 +23,8 @@ export type DocumentDetailResponse = {
     text: string;
     section?: string | null;
     chunkLen?: number;
+    startOffset?: number;
+    endOffset?: number;
   }>;
 };
 

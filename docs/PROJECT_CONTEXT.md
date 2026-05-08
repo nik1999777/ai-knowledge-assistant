@@ -64,6 +64,8 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 1. User uploads `.txt`, `.md`, `.pdf`, or `.docx`.
 2. Backend parses the document.
 3. Backend chunks text into retrieval units.
+   Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
+   `endOffset` for source inspection.
 4. Ollama creates embeddings for chunks.
 5. Postgres stores document metadata, full text, FTS `search_vector`, chat
    sessions, chat messages, sources, timing, and debug JSON.
@@ -183,12 +185,26 @@ The markdown docs are not used to generate the UI. This is intentional for now:
 the page is interactive and type-safe TS data is simpler to maintain than a
 markdown-to-UI generation layer.
 
+## Source Spans
+
+Retrieval sources now include chunk-level character spans:
+
+- `startOffset`
+- `endOffset`
+
+These offsets point into the normalized text used by the chunker. They are
+metadata for inspection/debugging and are carried through Qdrant payloads, chat
+sources, document detail chunks, and eval source snapshots.
+
+Important limitation: this is not answer-level citation extraction yet. The
+assistant still cites retrieved chunks, not individual generated claims.
+
 ## Known Limitations
 
 - No auth/user ownership yet.
 - Ingestion is synchronous.
 - No async ingestion status/jobs.
-- No answer-level citations/source spans.
+- No answer-level citations.
 - No generated eval for user documents yet. `eval:current` is static-question
   eval, not dynamic eval derived from uploaded documents.
 - Chunking is simple.
@@ -218,7 +234,8 @@ markdown-to-UI generation layer.
    - Backend should index in a separate job/process.
    - UI should show status, retry, and error message.
 5. Citations/source spans.
-   - Add section/chunk/startOffset/endOffset.
+   - Chunk-level `section`, `chunkIndex`, `startOffset`, and `endOffset` exist.
+   - Next: add answer-level citations that bind generated claims to evidence spans.
    - Later add PDF page number.
    - Show exact evidence source in answers.
 6. Security / ownership.

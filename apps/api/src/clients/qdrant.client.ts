@@ -56,6 +56,8 @@ export async function saveChunks(
       text: chunk.text,
       chunkIndex: chunk.chunkIndex,
       chunkLen: chunk.chunkLen,
+      startOffset: chunk.startOffset,
+      endOffset: chunk.endOffset,
       section: chunk.section,
     },
   }));

@@ -177,7 +177,7 @@ export const STAGES: StageInfo[] = [
     flow: [
       "Текст нормализуется.",
       "Chunk service режет документ на фрагменты.",
-      "Каждый chunk получает `chunkIndex`, `chunkLen` и `section`.",
+      "Каждый chunk получает `chunkIndex`, `chunkLen`, `section`, `startOffset` и `endOffset`.",
     ],
     metrics: ["avg_chunk_len", "chunks_per_doc", "section_coverage"],
     failures: [
@@ -198,7 +198,7 @@ export const STAGES: StageInfo[] = [
     goal: "Сохранить документ так, чтобы потом искать его семантически и лексически.",
     flow: [
       "Ollama `nomic-embed-text` строит embedding для каждого chunk-а.",
-      "Qdrant хранит vector + payload: `documentScope`, `docId`, `chunkIndex`, `section`, `text`.",
+      "Qdrant хранит vector + payload: `documentScope`, `docId`, `chunkIndex`, `section`, `startOffset`, `endOffset`, `text`.",
       "Postgres хранит документ, metadata и `search_vector` для FTS.",
       "`documentScope=user` и `documentScope=eval` изолируют обычные документы от benchmark.",
     ],
@@ -448,7 +448,7 @@ export const STORAGE_ITEMS = [
   {
     title: "Qdrant",
     body: "Хранит embeddings chunk-ов и payload. Vector search фильтруется по `documentScope` до top-K.",
-    fields: ["vector", "docId", "documentScope", "chunkIndex", "section", "text"],
+    fields: ["vector", "docId", "documentScope", "chunkIndex", "section", "startOffset", "endOffset", "text"],
   },
   {
     title: "Ollama",
@@ -515,7 +515,7 @@ export const GLOSSARY: GlossaryItem[] = [
     projectMeaning:
       "Backend режет документ на chunk-и, потому что искать и передавать в prompt весь PDF целиком дорого и неточно.",
     example:
-      "Документ на 20 страниц может стать набором chunk-ов с `chunkIndex`, `chunkLen` и `section`.",
+      "Документ на 20 страниц может стать набором chunk-ов с `chunkIndex`, `chunkLen`, `section` и character spans.",
   },
   {
     term: "Embedding",
@@ -844,7 +844,7 @@ export const KNOWN_LIMITATIONS = [
   "Нет auth/user ownership: пока база считается локальной и single-user.",
   "Ingestion синхронный: большие документы могут долго держать request.",
   "Нет ingestion statuses/retry queue.",
-  "Нет citations/source spans внутри ответа.",
+  "Есть chunk-level source spans, но нет citations внутри сгенерированного ответа.",
   "`eval:current` не является динамическим generated eval: он гоняет заранее заданный `questions.json` по текущим user docs, но сам не создает вопросы/evidence из загруженных документов.",
   "Generated eval для user docs еще не реализован: нет автоматического создания вопросов, expected keywords и evidence quotes из конкретных chunks.",
   "Chunking простой, без сложной semantic segmentation.",
@@ -858,7 +858,7 @@ export const ROADMAP_ITEMS = [
   ["2. Generated eval for user docs", "Сейчас `eval:current` не динамический: он использует заранее заданный `questions.json`. Нужен generated eval, который берет chunks загруженных документов и создает question, expected answer keywords, source keywords и evidence quote."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
   ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
-  ["5. Citations/source spans", "После качества и ingestion добавить точные ссылки: section, chunkIndex, startOffset/endOffset, позже page number для PDF. Ответ должен показывать не только chunk-source, а конкретное evidence место."],
+  ["5. Citations/source spans", "Chunk-level section, chunkIndex, startOffset/endOffset уже есть. Следующий шаг: answer-level citations, page number для PDF и привязка claims к конкретному evidence месту."],
   ["6. Security / ownership", "Добавить user/tenant ownership: документы, chat history и retrieval должны фильтроваться по текущему user/tenant. Для Qdrant нужен payload filter по `tenantId`/`userId`."],
   ["7. LangChain comparison mode", "Не заменять handmade pipeline. Добавить experimental `/chat/langchain/stream`, повторить retrieval/generation через LangChain и описать разницу на Architecture."],
   ["8. LangGraph / agentic retrieval", "После крепкой базы можно добавить agentic flow: planner -> query rewrite -> retrieval -> rerank -> answer/clarify/decline."],

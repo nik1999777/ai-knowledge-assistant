@@ -2,6 +2,8 @@ export type TextChunk = {
   text: string;
   chunkIndex: number;
   chunkLen: number;
+  startOffset: number;
+  endOffset: number;
   section: string | null;
 };
 
@@ -64,14 +66,14 @@ export function chunkDocument(
     pushChunk(chunks, buffer, activeSection);
   }
 
-  return chunks.map((chunk, index) => ({
+  return attachOffsets(text, chunks).map((chunk, index) => ({
     ...chunk,
     chunkIndex: index,
   }));
 }
 
 function pushChunk(
-  chunks: Array<Omit<TextChunk, "chunkIndex">>,
+  chunks: Array<Omit<TextChunk, "chunkIndex" | "startOffset" | "endOffset">>,
   text: string,
   section: string | null,
 ) {
@@ -85,6 +87,34 @@ function pushChunk(
     text: normalized,
     chunkLen: normalized.length,
     section,
+  });
+}
+
+function attachOffsets(
+  fullText: string,
+  chunks: Array<Omit<TextChunk, "chunkIndex" | "startOffset" | "endOffset">>,
+): Array<Omit<TextChunk, "chunkIndex">> {
+  let previousStart = 0;
+
+  return chunks.map((chunk) => {
+    const searchStart = Math.min(previousStart, fullText.length);
+    let startOffset = fullText.indexOf(chunk.text, searchStart);
+
+    if (startOffset === -1) {
+      startOffset = fullText.indexOf(chunk.text);
+    }
+
+    if (startOffset === -1) {
+      startOffset = searchStart;
+    }
+
+    previousStart = startOffset + 1;
+
+    return {
+      ...chunk,
+      startOffset,
+      endOffset: startOffset + chunk.text.length,
+    };
   });
 }
 

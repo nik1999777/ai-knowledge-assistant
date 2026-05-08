@@ -28,6 +28,8 @@ export async function getDocumentDetail(
       text: chunk.text,
       section: chunk.section,
       chunkLen: chunk.chunkLen,
+      startOffset: chunk.startOffset,
+      endOffset: chunk.endOffset,
     })),
   };
 }

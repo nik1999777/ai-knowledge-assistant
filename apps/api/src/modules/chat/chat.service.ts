@@ -162,6 +162,14 @@ async function buildRagChatContext(
       typeof item.payload?.chunkLen === "number"
         ? item.payload.chunkLen
         : undefined,
+    startOffset:
+      typeof item.payload?.startOffset === "number"
+        ? item.payload.startOffset
+        : undefined,
+    endOffset:
+      typeof item.payload?.endOffset === "number"
+        ? item.payload.endOffset
+        : undefined,
     section:
       typeof item.payload?.section === "string" ? item.payload.section : null,
     score: item.score ?? 0,
@@ -275,6 +283,8 @@ function buildLexicalSources(
         text: chunk.text,
         chunkIndex: chunk.chunkIndex,
         chunkLen: chunk.chunkLen,
+        startOffset: chunk.startOffset,
+        endOffset: chunk.endOffset,
         section: chunk.section,
         score,
       });

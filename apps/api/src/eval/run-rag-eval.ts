@@ -38,6 +38,8 @@ type EvalSourceSnapshot = {
   rrfScore?: number;
   finalScore?: number;
   section?: string | null;
+  startOffset?: number;
+  endOffset?: number;
   textPreview: string;
 };
 
@@ -224,6 +226,8 @@ async function evaluateCase(
       rrfScore: source.rrfScore,
       finalScore: source.finalScore,
       section: source.section,
+      startOffset: source.startOffset,
+      endOffset: source.endOffset,
       textPreview: createPreview(source.text),
     })),
   };

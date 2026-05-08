@@ -93,6 +93,9 @@ export function DocumentDetailPage() {
                   >
                     <ChunkHeader>
                       <ChunkTitle>Chunk {chunk.chunkIndex}</ChunkTitle>
+                      <ChunkMeta>
+                        {formatChunkSpan(chunk.startOffset, chunk.endOffset)}
+                      </ChunkMeta>
                       {chunk.chunkIndex === activeChunkIndex ? (
                         <ChunkBadge>Referenced in chat</ChunkBadge>
                       ) : null}
@@ -319,6 +322,11 @@ const ChunkTitle = styled.div`
   color: var(--text-primary);
 `;
 
+const ChunkMeta = styled.div`
+  font-size: 12px;
+  color: var(--text-muted);
+`;
+
 const ChunkBadge = styled.span`
   padding: 6px 10px;
   border-radius: 999px;
@@ -378,4 +386,12 @@ function renderHighlightedChunk(text: string, snippet: string | null) {
       {text.slice(endIndex)}
     </>
   );
+}
+
+function formatChunkSpan(startOffset?: number, endOffset?: number) {
+  if (typeof startOffset !== "number" || typeof endOffset !== "number") {
+    return "span unavailable";
+  }
+
+  return `span ${startOffset}-${endOffset}`;
 }

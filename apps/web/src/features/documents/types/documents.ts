@@ -21,6 +21,10 @@ export type DocumentDetailResponse = {
   chunks: Array<{
     chunkIndex: number;
     text: string;
+    section?: string | null;
+    chunkLen?: number;
+    startOffset?: number;
+    endOffset?: number;
   }>;
 };
 

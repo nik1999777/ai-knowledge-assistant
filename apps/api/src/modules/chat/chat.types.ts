@@ -5,6 +5,8 @@ export type RagSource = {
   text: string;
   chunkIndex: number;
   chunkLen?: number;
+  startOffset?: number;
+  endOffset?: number;
   section?: string | null;
   origin?: "vector" | "lexical" | "hybrid";
   vectorRank?: number;

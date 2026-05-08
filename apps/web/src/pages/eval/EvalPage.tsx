@@ -265,6 +265,7 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
                 vector: {formatRankScore(source.vectorRank, source.vectorScore)} ·
                 lexical: {formatRankScore(source.lexicalRank, source.lexicalScore)} ·
                 RRF: {formatOptionalNumber(source.rrfScore)}
+                {formatSourceSpan(source.startOffset, source.endOffset)}
               </SourcePreviewMeta>
               <SourcePreviewText>{source.textPreview}</SourcePreviewText>
             </SourcePreview>
@@ -622,6 +623,14 @@ function formatRankScore(rank?: number, score?: number) {
   }
 
   return `#${rank ?? "?"} / ${formatOptionalNumber(score)}`;
+}
+
+function formatSourceSpan(startOffset?: number, endOffset?: number) {
+  if (typeof startOffset !== "number" || typeof endOffset !== "number") {
+    return "";
+  }
+
+  return ` · span: ${startOffset}-${endOffset}`;
 }
 
 function formatDate(value: string) {

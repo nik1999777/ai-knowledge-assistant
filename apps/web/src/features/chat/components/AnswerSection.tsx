@@ -161,6 +161,7 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                           </SourceTitleLink>
                           <Meta>
                             docId: {source.docId} • chunk: {source.chunkIndex}
+                            {formatSourceSpan(source.startOffset, source.endOffset)}
                           </Meta>
                           <Meta>
                             origin: {formatOrigin(source.origin)} • vector:{" "}
@@ -399,6 +400,14 @@ const NoSources = styled.p`
 
 function formatNumber(value?: number) {
   return typeof value === "number" ? value.toFixed(3) : "—";
+}
+
+function formatSourceSpan(startOffset?: number, endOffset?: number) {
+  if (typeof startOffset !== "number" || typeof endOffset !== "number") {
+    return "";
+  }
+
+  return ` • span: ${startOffset}-${endOffset}`;
 }
 
 function formatRankScore(rank?: number, score?: number) {

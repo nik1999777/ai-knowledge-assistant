@@ -50,6 +50,8 @@ export type EvalCaseResult = {
     rrfScore?: number;
     finalScore?: number;
     section?: string | null;
+    startOffset?: number;
+    endOffset?: number;
     textPreview: string;
   }>;
 };
