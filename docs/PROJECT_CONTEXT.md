@@ -72,7 +72,8 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 6. Qdrant stores chunk vectors and payload.
 7. Chat builds a RAG context through hybrid retrieval.
 8. Decision policy chooses answer or safe decline.
-9. Ollama streams grounded generation through SSE.
+9. Ollama receives grounded context with source title, section, chunk index, and
+   chunk text, then streams generation through SSE.
 10. Answer, sources, timing, and debug are saved to chat history.
 
 ## Prompt Versioning
@@ -83,7 +84,7 @@ as `RAG_PROMPT_VERSION`.
 The current version is:
 
 ```text
-rag-grounded-v1
+rag-grounded-v2
 ```
 
 Each chat response stores `debug.promptVersion`. Eval results also record the

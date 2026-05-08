@@ -225,10 +225,22 @@ async function buildRagChatContext(
     mergedCount: mergedSources.length,
     rerankedCount: rerankedSources.length,
     sources: rerankedSources,
-    contextChunks: rerankedSources.map((item) => item.text),
+    contextChunks: rerankedSources.map(formatPromptContextChunk),
     vectorCount: vectorSources.length,
     shouldDecline: decision.shouldDecline,
   };
+}
+
+function formatPromptContextChunk(source: RagSource) {
+  return [
+    `Источник: ${source.title}`,
+    source.section ? `Раздел: ${source.section}` : null,
+    `Chunk: ${source.chunkIndex}`,
+    "Текст:",
+    source.text,
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join("\n");
 }
 
 function decideAnswerability(input: {

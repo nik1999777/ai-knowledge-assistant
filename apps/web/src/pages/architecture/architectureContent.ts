@@ -278,7 +278,7 @@ export const STAGES: StageInfo[] = [
     subtitle: "Grounded prompt + SSE",
     goal: "Сгенерировать ответ только из retrieved context и стримить его в UI.",
     flow: [
-      "Prompt получает вопрос и top-K retrieved chunks.",
+      "Prompt получает вопрос и top-K retrieved chunks с title, section и chunkIndex.",
       "Ollama `llama3` генерирует ответ.",
       "Backend отправляет chunks ответа по SSE.",
       "Meta содержит `sources`, `timing`, `debug`.",

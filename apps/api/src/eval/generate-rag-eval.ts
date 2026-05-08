@@ -86,19 +86,22 @@ export async function generateRagEvalDataset(options: {
         break;
       }
 
-      const keywords = selectKeywords(chunk.text, KEYWORDS_PER_CASE);
+      const chunkKeywords = selectKeywords(chunk.text, KEYWORDS_PER_CASE);
 
-      if (keywords.length < 2) {
+      if (chunkKeywords.length < 2) {
         continue;
       }
 
-      const evidenceQuote = createEvidenceQuote(chunk.text, keywords);
+      const evidenceQuote = createEvidenceQuote(chunk.text, chunkKeywords);
+      const evidenceKeywords = selectKeywords(evidenceQuote, KEYWORDS_PER_CASE);
+      const keywords =
+        evidenceKeywords.length >= 2 ? evidenceKeywords : chunkKeywords;
       const id = `generated-${String(cases.length + 1).padStart(3, "0")}`;
 
       cases.push({
         id,
         category: "answerable",
-        question: buildQuestion(document.title, chunk, keywords),
+        question: buildQuestion(document.title, chunk, keywords, evidenceQuote),
         expected: {
           answerable: true,
           answerKeywords: keywords.slice(0, 3),
@@ -157,8 +160,18 @@ function isUsefulChunk(chunk: TextChunk) {
   );
 }
 
-function buildQuestion(title: string, chunk: TextChunk, keywords: string[]) {
+function buildQuestion(
+  title: string,
+  chunk: TextChunk,
+  keywords: string[],
+  evidenceQuote: string,
+) {
   const subject = chunk.section ? `разделе "${chunk.section}"` : `документе "${title}"`;
+
+  if (/роли\s*:/i.test(evidenceQuote)) {
+    return `Какие роли перечислены в ${subject}?`;
+  }
+
   const keywordHint = keywords.slice(0, 2).join(" и ");
 
   return `Что говорится о ${keywordHint} в ${subject}?`;
