@@ -14,7 +14,8 @@ type ViewId =
   | "why"
   | "data"
   | "failures"
-  | "roadmap";
+  | "roadmap"
+  | "walkthrough";
 type TraceId = "question" | "decline" | "ingestion" | "seed_eval";
 type StageId =
   | "upload"
@@ -69,6 +70,22 @@ type FailureRecord = {
   uiCheck: string;
   codeCheck: string;
   command: string;
+};
+
+type VisualFlow = {
+  title: string;
+  summary: string;
+  lanes: Array<{
+    title: string;
+    steps: string[];
+  }>;
+};
+
+type WalkthroughStep = {
+  title: string;
+  plain: string;
+  technical: string;
+  debug: string;
 };
 
 const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
@@ -126,6 +143,11 @@ const VIEWS: Array<{ id: ViewId; title: string; subtitle: string }> = [
     id: "roadmap",
     title: "Roadmap",
     subtitle: "Ограничения и следующий шаг",
+  },
+  {
+    id: "walkthrough",
+    title: "Walkthrough",
+    subtitle: "Один вопрос целиком",
   },
 ];
 
@@ -845,6 +867,133 @@ const ROADMAP_ITEMS = [
   ["Observability", "Сохранять trace retrieval/generation для анализа latency и качества."],
 ];
 
+const VISUAL_FLOWS: VisualFlow[] = [
+  {
+    title: "Document Flow",
+    summary:
+      "Что происходит с файлом после upload. Важный момент: документ расходится в две системы хранения, потому что нам нужны и full-text search, и vector search.",
+    lanes: [
+      {
+        title: "Ingestion",
+        steps: ["Upload", "Parse", "Chunk", "Embed"],
+      },
+      {
+        title: "Storage",
+        steps: ["Postgres document + FTS", "Qdrant vectors + payload"],
+      },
+      {
+        title: "Use",
+        steps: ["Documents UI", "Retrieval", "Sources"],
+      },
+    ],
+  },
+  {
+    title: "Chat Flow",
+    summary:
+      "Что происходит с вопросом пользователя. Тут есть ветвление: если evidence слабый, backend возвращает safe decline без вызова LLM.",
+    lanes: [
+      {
+        title: "Question",
+        steps: ["User asks", "Embedding", "Vector + lexical search"],
+      },
+      {
+        title: "Reasoning",
+        steps: ["RRF fusion", "Local rerank", "Decision policy"],
+      },
+      {
+        title: "Output",
+        steps: ["LLM answer", "or Safe decline", "Save history"],
+      },
+    ],
+  },
+  {
+    title: "Eval Flow",
+    summary:
+      "Как проверяем, что изменения не сломали answerability. Seed eval использует отдельный scope, поэтому не зависит от пользовательских документов.",
+    lanes: [
+      {
+        title: "Setup",
+        steps: ["Seed docs", "documentScope=eval", "Fixed docIds"],
+      },
+      {
+        title: "Run",
+        steps: ["Questions", "Same RAG flow", "Collect sources/debug"],
+      },
+      {
+        title: "Report",
+        steps: ["Accuracy", "TP/TN/FP/FN", "Source previews"],
+      },
+    ],
+  },
+];
+
+const WALKTHROUGH_STEPS: WalkthroughStep[] = [
+  {
+    title: "1. Пользователь спрашивает: Что дает RRF?",
+    plain:
+      "Система получает обычный текстовый вопрос. На этом этапе она еще не знает ответ и не вызывает LLM.",
+    technical:
+      "Chat API принимает question, создает embedding через Ollama `nomic-embed-text` и запускает retrieval в scope `user` или `eval`.",
+    debug: "Смотреть `timing.embeddingMs`: если он большой, тормозит embedding model или Ollama.",
+  },
+  {
+    title: "2. Vector search ищет смысловые совпадения",
+    plain:
+      "Qdrant ищет chunk-и, похожие по смыслу. Он может найти текст про ranking или retrieval, даже если там не повторяется точная формулировка вопроса.",
+    technical:
+      "searchSimilar отправляет vector в Qdrant, top-K ограничен, filter по `documentScope` применяется до выдачи результатов.",
+    debug: "Смотреть `vectorCount`, `vectorRank`, `vectorScore` и source `origin=vector/hybrid`.",
+  },
+  {
+    title: "3. Lexical search ищет точные термины",
+    plain:
+      "Postgres FTS ищет слова вроде `RRF`, `rank`, `fusion`. Это важно для технических терминов и названий полей.",
+    technical:
+      "searchDocumentsLexical строит strict/relaxed tsquery, ранжирует документы и затем chunk-level overlap выбирает подходящие фрагменты.",
+    debug: "Смотреть `lexicalCount`, `lexicalRank`, `lexicalScore`.",
+  },
+  {
+    title: "4. RRF объединяет два списка",
+    plain:
+      "Если chunk высоко и в semantic, и в lexical поиске, он получает сильный сигнал. Мы не складываем raw scores напрямую, потому что шкалы разные.",
+    technical:
+      "fuseSourcesWithRrf дедуплицирует по `docId:chunkIndex`, считает reciprocal rank score и смешивает его с rawScore.",
+    debug: "Смотреть `origin=hybrid` и `rrfScore`. `rrfScore=1.000` означает лучший возможный fusion signal.",
+  },
+  {
+    title: "5. Local rerank уточняет порядок",
+    plain:
+      "После RRF система чуть повышает chunk-и, где есть слова вопроса, совпадение в title/section или точная фраза.",
+    technical:
+      "rerankSources добавляет token overlap, titleOverlap, sectionOverlap, phraseBonus и shortPenalty.",
+    debug: "Смотреть `finalScore`: это score после всех retrieval/rerank поправок.",
+  },
+  {
+    title: "6. Decision policy выбирает answer или decline",
+    plain:
+      "Если лучший source достаточно сильный, система отвечает. Если evidence слабый, система честно говорит, что не знает.",
+    technical:
+      "decideAnswerability проверяет sources, declineThreshold, answerThreshold, mid-band и domainEvidence.",
+    debug: "Смотреть `decision`, `bestScore`, `domainEvidence`, `guardrailReason`.",
+  },
+  {
+    title: "7. LLM получает grounded prompt",
+    plain:
+      "Модель не получает всю базу знаний. Она получает только top-K chunks, выбранные retrieval pipeline.",
+    technical:
+      "buildRagPrompt собирает question + contextChunks, streamLLM вызывает Ollama `llama3` со streaming.",
+    debug: "Смотреть `sources`: именно они стали grounding-контекстом.",
+  },
+  {
+    title: "8. UI показывает ответ и сохраняет историю",
+    plain:
+      "Пользователь видит streaming answer, sources, timing и debug. Потом этот ответ можно открыть из history.",
+    technical:
+      "Assistant message сохраняет answer, sources, timing и debug JSON в Postgres.",
+    debug: "Если прошлый ответ выглядит странно, history сохраняет debug для повторного анализа.",
+  },
+];
+
 export function ArchitecturePage() {
   const [activeView, setActiveView] = useState<ViewId>("pipeline");
   const [selectedStageId, setSelectedStageId] = useState<StageId>("retrieve");
@@ -910,6 +1059,36 @@ export function ArchitecturePage() {
               <MetricTag>Qdrant vectors</MetricTag>
               <MetricTag>Ollama local models</MetricTag>
             </TagList>
+          </Section>
+
+          <Section>
+            <SectionTitle>Визуальные схемы</SectionTitle>
+            <LeadText>
+              Эти схемы показывают три главных потока проекта отдельно. Так
+              проще не смешивать ingestion, chat runtime и eval: у каждого
+              потока свой вход, свои промежуточные шаги и свой результат.
+            </LeadText>
+            <FlowGrid>
+              {VISUAL_FLOWS.map((flow) => (
+                <FlowCard key={flow.title}>
+                  <BlockTitle>{flow.title}</BlockTitle>
+                  <Text>{flow.summary}</Text>
+                  <FlowLanes>
+                    {flow.lanes.map((lane) => (
+                      <FlowLane key={lane.title}>
+                        <FlowLaneTitle>{lane.title}</FlowLaneTitle>
+                        {lane.steps.map((step, index) => (
+                          <FlowStep key={step}>
+                            <span>{step}</span>
+                            {index < lane.steps.length - 1 ? <FlowArrow>↓</FlowArrow> : null}
+                          </FlowStep>
+                        ))}
+                      </FlowLane>
+                    ))}
+                  </FlowLanes>
+                </FlowCard>
+              ))}
+            </FlowGrid>
           </Section>
 
           <Section>
@@ -1293,6 +1472,43 @@ finalScore = localRerank(score)`}
             </Grid>
           </Section>
         </>
+      ) : null}
+
+      {activeView === "walkthrough" ? (
+        <Section>
+          <SectionTitle>Walkthrough: один вопрос целиком</SectionTitle>
+          <LeadText>
+            Пример ниже проводит один вопрос через весь RAG pipeline. Это самый
+            полезный способ понять проект: не по отдельным терминам, а как живой
+            запрос проходит frontend, backend, retrieval, decision policy, LLM и
+            history.
+          </LeadText>
+          <QuestionBox>
+            <DefinitionLabel>Пример вопроса</DefinitionLabel>
+            <QuestionText>Что дает Reciprocal Rank Fusion в retrieval?</QuestionText>
+          </QuestionBox>
+          <WalkthroughList>
+            {WALKTHROUGH_STEPS.map((step) => (
+              <WalkthroughCard key={step.title}>
+                <BlockTitle>{step.title}</BlockTitle>
+                <WalkthroughColumns>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Простыми словами</DefinitionLabel>
+                    <Text>{step.plain}</Text>
+                  </DefinitionBlock>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Технически</DefinitionLabel>
+                    <Text>{step.technical}</Text>
+                  </DefinitionBlock>
+                  <DefinitionBlock>
+                    <DefinitionLabel>Что смотреть в debug</DefinitionLabel>
+                    <Text>{step.debug}</Text>
+                  </DefinitionBlock>
+                </WalkthroughColumns>
+              </WalkthroughCard>
+            ))}
+          </WalkthroughList>
+        </Section>
       ) : null}
 
       {activeView === "glossary" ? (
@@ -1895,6 +2111,107 @@ const FailureGrid = styled.div`
   }
 
   @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FlowGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+
+  @media (max-width: 1180px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FlowCard = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 14px;
+`;
+
+const FlowLanes = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FlowLane = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px;
+`;
+
+const FlowLaneTitle = styled.div`
+  color: var(--text-primary);
+  font-weight: 800;
+  margin-bottom: 8px;
+  font-size: 13px;
+`;
+
+const FlowStep = styled.div`
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+
+  span {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--surface-subtle);
+    border-radius: 8px;
+    padding: 8px;
+  }
+`;
+
+const FlowArrow = styled.div`
+  color: var(--accent-strong);
+  font-weight: 900;
+`;
+
+const QuestionBox = styled.div`
+  border: 1px solid rgba(16, 163, 127, 0.35);
+  background: var(--accent-soft);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+`;
+
+const QuestionText = styled.div`
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 800;
+`;
+
+const WalkthroughList = styled.div`
+  display: grid;
+  gap: 12px;
+`;
+
+const WalkthroughCard = styled.div`
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  padding: 14px;
+`;
+
+const WalkthroughColumns = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (max-width: 980px) {
     grid-template-columns: 1fr;
   }
 `;
