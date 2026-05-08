@@ -138,6 +138,11 @@ npm run eval:current
 - `eval:current`: runs `questions.json` against the current user document base.
 - `eval:rag`: alias for `eval:current`.
 
+Important limitation: `eval:current` is not dynamic generated eval yet. It runs
+the static `questions.json` file against the current `documentScope=user`
+documents. It does not inspect uploaded chunks and generate new questions,
+expected keywords, source keywords, or evidence quotes automatically.
+
 Current stable seed benchmark after RRF/scope changes:
 
 - `answerability_accuracy=1.000`
@@ -184,20 +189,49 @@ markdown-to-UI generation layer.
 - Ingestion is synchronous.
 - No async ingestion status/jobs.
 - No answer-level citations/source spans.
-- No generated eval for user documents yet.
+- No generated eval for user documents yet. `eval:current` is static-question
+  eval, not dynamic eval derived from uploaded documents.
 - Chunking is simple.
 - Rerank is local, not cross-encoder-based.
 - No observability dashboard.
 
 ## Suggested Next Engineering Steps
 
-1. Citations/source spans.
+1. Quality + eval foundation.
+   - Keep eval first before adding more product features.
+   - Expand eval cases.
+   - Keep categories: `answerable`, `unanswerable`, `tricky`, `exact`,
+     `multi-hop`.
+   - Show category summary, failed cases, `bestScore`, `decision`, and
+     `guardrailReason`.
 2. Generated eval for current user documents.
-3. Async ingestion and statuses.
-4. Auth/user ownership.
-5. Better chunking.
-6. Stronger reranker.
-7. Observability/tracing.
+   - Generate questions from uploaded chunks.
+   - Store expected answer keywords, source keywords, and evidence quote.
+   - Make eval dynamically reflect the current user knowledge base.
+3. Retrieval Debug panel.
+   - RRF exists, but a dedicated panel should show vector candidates, lexical
+     candidates, merged/hybrid candidates, filtered candidates, raw ranks/scores,
+     and final rerank.
+4. Async ingestion and statuses.
+   - Move toward `uploaded -> processing -> indexed` or `failed`.
+   - API should return `docId` quickly.
+   - Backend should index in a separate job/process.
+   - UI should show status, retry, and error message.
+5. Citations/source spans.
+   - Add section/chunk/startOffset/endOffset.
+   - Later add PDF page number.
+   - Show exact evidence source in answers.
+6. Security / ownership.
+   - Add simple auth model.
+   - Documents and chat history should belong to user/tenant.
+   - Retrieval should filter Postgres and Qdrant by user/tenant.
+7. LangChain comparison mode.
+   - Keep handmade pipeline as primary.
+   - Add experimental `/chat/langchain/stream`.
+   - Compare architecture and behavior on `/architecture`.
+8. LangGraph / agentic retrieval.
+   - Planner -> query rewrite -> retrieval -> rerank -> answer/clarify/decline.
+9. Better chunking, stronger reranker, observability/tracing.
 
 ## Git Workflow Preference
 
@@ -207,4 +241,3 @@ After completing a meaningful change:
 2. Run relevant checks.
 3. Commit.
 4. Push to `origin/main`.
-

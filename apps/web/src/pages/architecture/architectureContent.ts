@@ -845,7 +845,8 @@ export const KNOWN_LIMITATIONS = [
   "Ingestion синхронный: большие документы могут долго держать request.",
   "Нет ingestion statuses/retry queue.",
   "Нет citations/source spans внутри ответа.",
-  "Generated eval для user docs еще не реализован.",
+  "`eval:current` не является динамическим generated eval: он гоняет заранее заданный `questions.json` по текущим user docs, но сам не создает вопросы/evidence из загруженных документов.",
+  "Generated eval для user docs еще не реализован: нет автоматического создания вопросов, expected keywords и evidence quotes из конкретных chunks.",
   "Chunking простой, без сложной semantic segmentation.",
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
@@ -853,13 +854,15 @@ export const KNOWN_LIMITATIONS = [
 ];
 
 export const ROADMAP_ITEMS = [
-  ["Citations/source spans", "Показывать не только chunk, но и конкретный фрагмент, на который опирается фраза ответа."],
-  ["Generated eval", "Генерировать вопросы, expected keywords и evidence из user chunks, чтобы проверять текущую базу автоматически."],
-  ["Async ingestion", "Перевести upload в job/status flow, чтобы большие PDF не блокировали UI."],
-  ["Auth/user ownership", "Изолировать документы и историю по пользователю."],
-  ["Better chunking", "Добавить более умное разбиение по структуре документа и semantic boundaries."],
-  ["Reranker", "Попробовать cross-encoder или LLM-based rerank для сложных вопросов."],
-  ["Observability", "Сохранять trace retrieval/generation для анализа latency и качества."],
+  ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`), summary по категориям, failed cases, bestScore, decision и guardrailReason."],
+  ["2. Generated eval for user docs", "Сейчас `eval:current` не динамический: он использует заранее заданный `questions.json`. Нужен generated eval, который берет chunks загруженных документов и создает question, expected answer keywords, source keywords и evidence quote."],
+  ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
+  ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
+  ["5. Citations/source spans", "После качества и ingestion добавить точные ссылки: section, chunkIndex, startOffset/endOffset, позже page number для PDF. Ответ должен показывать не только chunk-source, а конкретное evidence место."],
+  ["6. Security / ownership", "Добавить user/tenant ownership: документы, chat history и retrieval должны фильтроваться по текущему user/tenant. Для Qdrant нужен payload filter по `tenantId`/`userId`."],
+  ["7. LangChain comparison mode", "Не заменять handmade pipeline. Добавить experimental `/chat/langchain/stream`, повторить retrieval/generation через LangChain и описать разницу на Architecture."],
+  ["8. LangGraph / agentic retrieval", "После крепкой базы можно добавить agentic flow: planner -> query rewrite -> retrieval -> rerank -> answer/clarify/decline."],
+  ["9. Better chunking, reranker, observability", "Дальше улучшать semantic chunking, пробовать cross-encoder/LLM rerank и сохранять trace retrieval/generation для анализа latency и качества."],
 ];
 
 export const VISUAL_FLOWS: VisualFlow[] = [
@@ -988,4 +991,3 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     debug: "Если прошлый ответ выглядит странно, history сохраняет debug для повторного анализа.",
   },
 ];
-
