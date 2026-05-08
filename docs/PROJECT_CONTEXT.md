@@ -133,17 +133,23 @@ Commands:
 cd apps/api
 npm run eval:seed
 npm run eval:current
+npm run eval:generate
+npm run eval:generated
 ```
 
 - `eval:seed`: reindexes stable seed docs into `documentScope=eval`, runs
   `questions.seed.json`, and writes `last-seed-report.json`.
 - `eval:current`: runs `questions.json` against the current user document base.
+- `eval:generate`: builds `questions.generated.json` from current user
+  document chunks.
+- `eval:generated`: regenerates `questions.generated.json`, runs those cases
+  against `documentScope=user`, and writes `last-generated-report.json`.
 - `eval:rag`: alias for `eval:current`.
 
-Important limitation: `eval:current` is not dynamic generated eval yet. It runs
-the static `questions.json` file against the current `documentScope=user`
-documents. It does not inspect uploaded chunks and generate new questions,
-expected keywords, source keywords, or evidence quotes automatically.
+Generated eval foundation is deterministic/extractive: it selects useful chunks,
+builds answerable questions from chunk keywords, stores expected answer/source
+keywords, evidence quotes, and chunk spans, then adds a few stable unanswerable
+cases. It does not use an LLM to author questions yet.
 
 Current stable seed benchmark after RRF/scope changes:
 
@@ -205,8 +211,8 @@ assistant still cites retrieved chunks, not individual generated claims.
 - Ingestion is synchronous.
 - No async ingestion status/jobs.
 - No answer-level citations.
-- No generated eval for user documents yet. `eval:current` is static-question
-  eval, not dynamic eval derived from uploaded documents.
+- Generated eval exists, but it is deterministic/extractive rather than
+  LLM-authored.
 - Chunking is simple.
 - Rerank is local, not cross-encoder-based.
 - No observability dashboard.
@@ -221,9 +227,9 @@ assistant still cites retrieved chunks, not individual generated claims.
    - Show category summary, failed cases, `bestScore`, `decision`, and
      `guardrailReason`.
 2. Generated eval for current user documents.
-   - Generate questions from uploaded chunks.
-   - Store expected answer keywords, source keywords, and evidence quote.
-   - Make eval dynamically reflect the current user knowledge base.
+   - Foundation exists through `eval:generate` and `eval:generated`.
+   - Next: improve question diversity and add harder generated categories.
+   - Later: optionally use an LLM generator with strict JSON validation.
 3. Retrieval Debug panel.
    - RRF exists, but a dedicated panel should show vector candidates, lexical
      candidates, merged/hybrid candidates, filtered candidates, raw ranks/scores,

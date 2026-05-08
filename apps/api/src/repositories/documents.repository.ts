@@ -33,6 +33,14 @@ export type LexicalDocumentMatch = {
   lexicalRank: number;
 };
 
+export type EvalDocument = {
+  docId: string;
+  documentScope: DocumentScope;
+  title: string;
+  sourceType: DocumentSourceType;
+  textContent: string;
+};
+
 type DocumentRow = {
   doc_id: string;
   document_scope: DocumentScope;
@@ -269,6 +277,34 @@ export async function searchDocumentsLexical(
     sourceType: row.source_type,
     textContent: row.text_content,
     lexicalRank: Number(row.lexical_rank ?? 0),
+  }));
+}
+
+export async function listDocumentsForEval(
+  scope: DocumentScope = "user",
+): Promise<EvalDocument[]> {
+  const result = await pool.query<{
+    doc_id: string;
+    document_scope: DocumentScope;
+    title: string;
+    source_type: DocumentSourceType;
+    text_content: string;
+  }>(
+    `
+      SELECT doc_id, document_scope, title, source_type, text_content
+      FROM documents
+      WHERE document_scope = $1
+      ORDER BY updated_at DESC
+    `,
+    [scope],
+  );
+
+  return result.rows.map((row) => ({
+    docId: row.doc_id,
+    documentScope: row.document_scope,
+    title: row.title,
+    sourceType: row.source_type,
+    textContent: row.text_content,
   }));
 }
 

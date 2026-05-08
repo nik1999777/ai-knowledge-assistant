@@ -13,8 +13,19 @@ type EvalCase = {
   expected: {
     answerable: boolean;
     answerKeywords?: string[];
+    evidenceQuote?: string;
     sourceKeywords?: string[];
   };
+  generated?: GeneratedEvalMetadata;
+};
+
+type GeneratedEvalMetadata = {
+  docId: string;
+  title: string;
+  chunkIndex: number;
+  section?: string | null;
+  startOffset?: number;
+  endOffset?: number;
 };
 
 type EvalCategory =
@@ -69,6 +80,8 @@ type EvalCaseResult = {
   sourceCount: number;
   vectorCount: number;
   expectedAnswerable: boolean;
+  expectedEvidenceQuote: string | null;
+  generated?: GeneratedEvalMetadata;
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;
@@ -204,6 +217,8 @@ async function evaluateCase(
     sourceCount,
     vectorCount: meta.debug.vectorCount ?? 0,
     expectedAnswerable: testCase.expected.answerable,
+    expectedEvidenceQuote: testCase.expected.evidenceQuote ?? null,
+    generated: testCase.generated,
     answerKeywordHit:
       testCase.expected.answerKeywords && testCase.expected.answerKeywords.length > 0
         ? answerKeywordHit

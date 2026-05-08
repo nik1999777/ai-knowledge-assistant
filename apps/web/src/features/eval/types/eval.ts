@@ -34,6 +34,15 @@ export type EvalCaseResult = {
   sourceCount: number;
   vectorCount: number;
   expectedAnswerable: boolean;
+  expectedEvidenceQuote?: string | null;
+  generated?: {
+    docId: string;
+    title: string;
+    chunkIndex: number;
+    section?: string | null;
+    startOffset?: number;
+    endOffset?: number;
+  };
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;

@@ -31,8 +31,9 @@ export function EvalPage() {
         <Eyebrow>RAG Eval</Eyebrow>
         <Title>Качество retrieval и decision policy</Title>
         <Subtitle>
-          Seed benchmark нужен для воспроизводимой проверки качества. Current
-          report показывает прогон по текущей изменяемой базе знаний.
+          Seed benchmark нужен для воспроизводимой проверки качества. Generated
+          report строит кейсы из текущих user-документов и прогоняет их через
+          тот же RAG flow.
         </Subtitle>
         <ModeToggle>
           <ModeButton
@@ -48,6 +49,13 @@ export function EvalPage() {
             $active={reportMode === "current"}
           >
             Current KB
+          </ModeButton>
+          <ModeButton
+            type="button"
+            onClick={() => setReportMode("generated")}
+            $active={reportMode === "generated"}
+          >
+            Generated KB
           </ModeButton>
         </ModeToggle>
       </HeroCard>
@@ -67,9 +75,7 @@ export function EvalPage() {
       {report ? (
         <>
           <ModeHint>
-            {reportMode === "seed"
-              ? "Команда: cd apps/api && npm run eval:seed"
-              : "Команда: cd apps/api && npm run eval:current"}
+            {getModeCommand(reportMode)}
           </ModeHint>
           <MetaLine>Последний прогон: {formatDate(report.generatedAt)}</MetaLine>
 
@@ -249,6 +255,10 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
         <span>decision: {result.decision ?? "unknown"}</span>
         <span>guardrail: {result.guardrailReason ?? "none"}</span>
       </DebugLine>
+
+      {result.expectedEvidenceQuote ? (
+        <EvidenceQuote>{result.expectedEvidenceQuote}</EvidenceQuote>
+      ) : null}
 
       {result.sources?.length ? (
         <SourcesList>
@@ -569,6 +579,15 @@ const DebugLine = styled.div`
   font-size: 13px;
 `;
 
+const EvidenceQuote = styled.p`
+  margin: 10px 0 0;
+  border-left: 3px solid var(--accent-strong);
+  padding-left: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+`;
+
 const SourcesList = styled.div`
   display: grid;
   gap: 8px;
@@ -631,6 +650,17 @@ function formatSourceSpan(startOffset?: number, endOffset?: number) {
   }
 
   return ` · span: ${startOffset}-${endOffset}`;
+}
+
+function getModeCommand(mode: EvalReportMode) {
+  switch (mode) {
+    case "seed":
+      return "Команда: cd apps/api && npm run eval:seed";
+    case "generated":
+      return "Команда: cd apps/api && npm run eval:generated";
+    case "current":
+      return "Команда: cd apps/api && npm run eval:current";
+  }
 }
 
 function formatDate(value: string) {

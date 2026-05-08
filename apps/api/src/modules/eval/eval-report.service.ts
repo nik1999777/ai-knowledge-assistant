@@ -2,10 +2,11 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAppError } from "../../utils/app-error.js";
 
-type EvalReportMode = "current" | "seed";
+type EvalReportMode = "current" | "generated" | "seed";
 
 const REPORT_FILES: Record<EvalReportMode, string> = {
   current: "last-report.json",
+  generated: "last-generated-report.json",
   seed: "last-seed-report.json",
 };
 
@@ -19,13 +20,22 @@ export async function getLatestEvalReport(mode: EvalReportMode = "current") {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       throw createAppError(
         404,
-        mode === "seed"
-          ? "Seed eval report не найден. Запустите npm run eval:seed из apps/api"
-          : "Eval report не найден. Запустите npm run eval:rag из apps/api",
+        getMissingReportMessage(mode),
       );
     }
 
     throw error;
+  }
+}
+
+function getMissingReportMessage(mode: EvalReportMode) {
+  switch (mode) {
+    case "seed":
+      return "Seed eval report не найден. Запустите npm run eval:seed из apps/api";
+    case "generated":
+      return "Generated eval report не найден. Запустите npm run eval:generated из apps/api";
+    case "current":
+      return "Eval report не найден. Запустите npm run eval:rag из apps/api";
   }
 }
 

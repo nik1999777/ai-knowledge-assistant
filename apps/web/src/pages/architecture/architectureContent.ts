@@ -460,6 +460,8 @@ export const STORAGE_ITEMS = [
 export const EVAL_FACTS = [
   ["eval:seed", "Переиндексирует стабильные seed docs в `documentScope=eval` и гоняет `questions.seed.json`."],
   ["eval:current", "Гоняет `questions.json` по текущей пользовательской базе `documentScope=user`."],
+  ["eval:generate", "Создает `questions.generated.json` из текущих user chunks: question, keywords, evidence quote и spans."],
+  ["eval:generated", "Регенерирует generated dataset и пишет `last-generated-report.json`."],
   ["eval:rag", "Alias для `eval:current`, оставлен для совместимости."],
   ["answerability_accuracy", "Главная метрика: правильно ли система ответила или отказалась."],
   ["tp/tn/fp/fn", "Confusion matrix по answerability: особенно важны FP, потому что это риск hallucination."],
@@ -601,7 +603,7 @@ export const GLOSSARY: GlossaryItem[] = [
     term: "Eval",
     short: "Набор проверочных вопросов и отчет о качестве.",
     projectMeaning:
-      "`eval:seed` проверяет стабильный benchmark, а `eval:current` проверяет текущую user базу.",
+      "`eval:seed` проверяет стабильный benchmark, `eval:current` гоняет статический user dataset, а `eval:generated` строит кейсы из текущих user chunks.",
     example:
       "`fp=0` значит система не ответила там, где должна была отказаться.",
   },
@@ -845,8 +847,8 @@ export const KNOWN_LIMITATIONS = [
   "Ingestion синхронный: большие документы могут долго держать request.",
   "Нет ingestion statuses/retry queue.",
   "Есть chunk-level source spans, но нет citations внутри сгенерированного ответа.",
-  "`eval:current` не является динамическим generated eval: он гоняет заранее заданный `questions.json` по текущим user docs, но сам не создает вопросы/evidence из загруженных документов.",
-  "Generated eval для user docs еще не реализован: нет автоматического создания вопросов, expected keywords и evidence quotes из конкретных chunks.",
+  "Generated eval foundation детерминированный/extractive: он пока не использует LLM для разнообразных вопросов.",
+  "`eval:current` остается статическим user dataset и не заменяет generated eval.",
   "Chunking простой, без сложной semantic segmentation.",
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
@@ -855,7 +857,7 @@ export const KNOWN_LIMITATIONS = [
 
 export const ROADMAP_ITEMS = [
   ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`), summary по категориям, failed cases, bestScore, decision и guardrailReason."],
-  ["2. Generated eval for user docs", "Сейчас `eval:current` не динамический: он использует заранее заданный `questions.json`. Нужен generated eval, который берет chunks загруженных документов и создает question, expected answer keywords, source keywords и evidence quote."],
+  ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят extractive dataset из текущих chunks. Следующий шаг: разнообразить категории, улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
   ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
   ["5. Citations/source spans", "Chunk-level section, chunkIndex, startOffset/endOffset уже есть. Следующий шаг: answer-level citations, page number для PDF и привязка claims к конкретному evidence месту."],
