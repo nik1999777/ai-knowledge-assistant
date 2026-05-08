@@ -8,7 +8,10 @@ import {
 import { chunkDocument } from "../../services/chunk.service.js";
 import { getEmbedding } from "../../services/embeddings.service.js";
 import { streamLLM } from "../../services/llm.service.js";
-import { buildRagPrompt } from "../../services/prompt.service.js";
+import {
+  RAG_PROMPT_VERSION,
+  buildRagPrompt,
+} from "../../services/prompt.service.js";
 import { measureTime } from "../../utils/timing.js";
 import { tokenizeForSearch } from "../../utils/tokenization.js";
 
@@ -72,6 +75,7 @@ export async function streamChatWithKnowledgeBase(
           threshold: context.decisionThreshold,
           declineThreshold: DECLINE_SCORE_THRESHOLD,
           answerThreshold: ANSWER_SCORE_THRESHOLD,
+          promptVersion: RAG_PROMPT_VERSION,
           topK: TOP_K,
           decision: "declined",
           domainEvidence: context.domainEvidence,
@@ -112,6 +116,7 @@ export async function streamChatWithKnowledgeBase(
         threshold: context.decisionThreshold,
         declineThreshold: DECLINE_SCORE_THRESHOLD,
         answerThreshold: ANSWER_SCORE_THRESHOLD,
+        promptVersion: RAG_PROMPT_VERSION,
         topK: TOP_K,
         decision: "answered",
         domainEvidence: context.domainEvidence,

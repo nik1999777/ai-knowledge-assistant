@@ -1,3 +1,5 @@
+export const RAG_PROMPT_VERSION = "rag-grounded-v1";
+
 export function buildRagPrompt(
   question: string,
   contextChunks: string[],

@@ -75,6 +75,21 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 9. Ollama streams grounded generation through SSE.
 10. Answer, sources, timing, and debug are saved to chat history.
 
+## Prompt Versioning
+
+The grounded RAG prompt is versioned in `apps/api/src/services/prompt.service.ts`
+as `RAG_PROMPT_VERSION`.
+
+The current version is:
+
+```text
+rag-grounded-v1
+```
+
+Each chat response stores `debug.promptVersion`. Eval results also record the
+prompt version so quality reports can be tied to the prompt behavior that
+produced them.
+
 ## Retrieval
 
 Retrieval is hybrid:

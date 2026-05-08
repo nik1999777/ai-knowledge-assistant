@@ -98,6 +98,11 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                 </CompactItem>
 
                 <CompactItem>
+                  <TimingLabel>Prompt</TimingLabel>
+                  <strong>{data.debug.promptVersion ?? "unknown"}</strong>
+                </CompactItem>
+
+                <CompactItem>
                   <TimingLabel>Guardrail reason</TimingLabel>
                   <strong>{guardrailReasonLabel}</strong>
                 </CompactItem>

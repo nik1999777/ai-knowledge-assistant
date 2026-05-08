@@ -26,6 +26,7 @@ export type EvalCaseResult = {
   decision?: "answered" | "declined";
   policyDeclined?: boolean;
   modelDeclined?: boolean;
+  promptVersion?: string | null;
   bestScore: number;
   domainEvidence?: number;
   guardrailReason?: string | null;

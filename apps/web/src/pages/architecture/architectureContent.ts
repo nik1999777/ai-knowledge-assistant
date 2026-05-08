@@ -282,6 +282,7 @@ export const STAGES: StageInfo[] = [
       "Ollama `llama3` генерирует ответ.",
       "Backend отправляет chunks ответа по SSE.",
       "Meta содержит `sources`, `timing`, `debug`.",
+      "`debug.promptVersion` фиксирует версию grounded prompt-а.",
     ],
     metrics: ["llm_latency_ms", "total_latency_ms", "stream_error_rate"],
     failures: [
@@ -304,7 +305,7 @@ export const STAGES: StageInfo[] = [
     flow: [
       "Chat session создается или переиспользуется.",
       "User message и assistant message пишутся в Postgres.",
-      "Assistant message хранит answer, sources, timing и debug JSON.",
+      "Assistant message хранит answer, sources, timing и debug JSON, включая `promptVersion`.",
       "Sidebar показывает sessions, а history восстанавливает прошлые ответы.",
     ],
     metrics: ["sessions_count", "messages_count", "history_restore_success"],
@@ -498,7 +499,7 @@ export const SYSTEM_SUMMARY = [
   },
   {
     title: "Как понять ответ",
-    body: "У каждого ответа есть sources, timing и debug. Sources показывают grounding, timing показывает скорость, debug объясняет decision и качество retrieval.",
+    body: "У каждого ответа есть sources, timing и debug. Sources показывают grounding, timing показывает скорость, debug объясняет decision, prompt version и качество retrieval.",
   },
 ];
 
@@ -989,7 +990,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     plain:
       "Пользователь видит streaming answer, sources, timing и debug. Потом этот ответ можно открыть из history.",
     technical:
-      "Assistant message сохраняет answer, sources, timing и debug JSON в Postgres.",
+      "Assistant message сохраняет answer, sources, timing и debug JSON в Postgres, включая версию prompt-а.",
     debug: "Если прошлый ответ выглядит странно, history сохраняет debug для повторного анализа.",
   },
 ];

@@ -251,6 +251,7 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
         <span>reason: {result.declineReason ?? "none"}</span>
         <span>policy: {result.policyDeclined ? "declined" : "answered"}</span>
         <span>model: {result.modelDeclined ? "declined" : "answered"}</span>
+        <span>prompt: {result.promptVersion ?? "unknown"}</span>
         <span>score: {result.bestScore.toFixed(3)}</span>
         <span>decision: {result.decision ?? "unknown"}</span>
         <span>guardrail: {result.guardrailReason ?? "none"}</span>
