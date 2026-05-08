@@ -167,14 +167,26 @@ function buildQuestion(
   evidenceQuote: string,
 ) {
   const subject = chunk.section ? `разделе "${chunk.section}"` : `документе "${title}"`;
+  const label = extractLeadingLabel(evidenceQuote);
 
-  if (/роли\s*:/i.test(evidenceQuote)) {
-    return `Какие роли перечислены в ${subject}?`;
+  if (label) {
+    return `Что указано в пункте "${label}" в ${subject}?`;
   }
 
   const keywordHint = keywords.slice(0, 2).join(" и ");
 
   return `Что говорится о ${keywordHint} в ${subject}?`;
+}
+
+function extractLeadingLabel(value: string) {
+  const normalized = value
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .trim();
+  const match = normalized.match(/^([\p{L}\p{N}_ .,/()\-]{3,80}):/u);
+  const label = match?.[1]?.trim();
+
+  return label && label.length <= 80 ? label : null;
 }
 
 function selectKeywords(text: string, limit: number) {
