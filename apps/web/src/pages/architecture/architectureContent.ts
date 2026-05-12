@@ -156,6 +156,7 @@ export const STAGES: StageInfo[] = [
       "Web отправляет multipart-запрос на backend.",
       "Fastify controller валидирует файл и запускает ingest service.",
       "Parser извлекает текст и warnings, если документ прочитан не идеально.",
+      "Markdown links нормализуются до видимого текста, чтобы длинные URL/path targets не загрязняли retrieval.",
       "ZIP parser собирает поддерживаемые `.txt`, `.md` и `.csv` файлы внутри в один archive document.",
     ],
     metrics: ["upload_success_rate", "ingest_error_rate", "parse_warning_rate"],

@@ -143,6 +143,10 @@ async function extractText(extension: string, buffer: Buffer) {
 
   const text = buffer.toString("utf-8");
 
+  if (extension === ".md") {
+    return normalizeMarkdownText(text);
+  }
+
   if (extension === ".csv") {
     return formatCsvText(text);
   }
@@ -219,7 +223,26 @@ function isSystemArchivePath(filePath: string) {
 }
 
 function normalizeArchivePath(filePath: string) {
-  return filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .split("/")
+    .map(decodePathSegment)
+    .join("/");
+}
+
+function decodePathSegment(segment: string) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function normalizeMarkdownText(text: string) {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 }
 
 function formatCsvText(text: string) {

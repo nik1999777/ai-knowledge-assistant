@@ -161,6 +161,7 @@ const PageGrid = styled.div`
 `;
 
 const MainCard = styled.section`
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -201,6 +202,7 @@ const Title = styled.h2`
   margin: 0;
   font-size: 30px;
   line-height: 1.15;
+  overflow-wrap: anywhere;
 `;
 
 const SourceBadge = styled.div`
@@ -295,6 +297,7 @@ const ChunksGrid = styled.div`
 `;
 
 const ChunkCard = styled.article<{ $active: boolean }>`
+  min-width: 0;
   border: 1px solid
     ${({ $active }) =>
       $active ? "rgba(16, 163, 127, 0.35)" : "var(--border)"};
@@ -342,6 +345,8 @@ const ChunkText = styled.p`
   line-height: 1.75;
   color: var(--text-secondary);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 `;
 
 const SnippetMark = styled.mark`
