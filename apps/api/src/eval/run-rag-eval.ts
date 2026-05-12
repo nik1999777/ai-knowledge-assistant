@@ -174,9 +174,7 @@ async function evaluateCase(
     },
   );
 
-  if (!answer) {
-    answer = finalAnswer;
-  }
+  answer = finalAnswer;
 
   const decisionDeclined = meta.debug.decision === "declined";
   const answerDeclined = isDeclineAnswer(answer);

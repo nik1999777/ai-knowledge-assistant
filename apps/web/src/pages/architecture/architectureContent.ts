@@ -289,6 +289,7 @@ export const STAGES: StageInfo[] = [
       "Meta содержит `sources`, `timing`, `debug`.",
       "`debug.promptVersion` фиксирует версию grounded prompt-а.",
       "`debug.generationOptions` фиксирует temperature/seed для repeatable eval.",
+      "Если model output содержит фразу отказа с лишним текстом, backend нормализует saved answer до точного decline contract.",
     ],
     metrics: ["llm_latency_ms", "total_latency_ms", "stream_error_rate"],
     failures: [
@@ -466,9 +467,9 @@ export const STORAGE_ITEMS = [
 
 export const EVAL_FACTS = [
   ["eval:seed", "Переиндексирует стабильные seed docs в `documentScope=eval` и гоняет `questions.seed.json`."],
-  ["eval:current", "Гоняет `questions.json` по текущей пользовательской базе `documentScope=user`."],
+  ["eval:current", "Legacy/static dataset: гоняет `questions.json` по user KB, полезен только если файл вручную соответствует загруженным документам."],
   ["eval:generate", "Создает `questions.generated.json` из текущих user chunks: question, keywords, evidence quote и spans."],
-  ["eval:generated", "Регенерирует generated dataset и пишет `last-generated-report.json`."],
+  ["eval:generated", "Основной smoke-test для текущей user KB: регенерирует generated dataset и пишет `last-generated-report.json`."],
   ["eval:rag", "Alias для `eval:current`, оставлен для совместимости."],
   ["answerability_accuracy", "Главная метрика: правильно ли система ответила или отказалась."],
   ["tp/tn/fp/fn", "Confusion matrix по answerability: особенно важны FP, потому что это риск hallucination."],

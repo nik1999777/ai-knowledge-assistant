@@ -87,7 +87,9 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 8. Decision policy chooses answer or safe decline.
 9. Ollama receives grounded context with source title, section, chunk index, and
    chunk text, then streams generation through SSE.
-10. Answer, sources, timing, and debug are saved to chat history.
+10. If the model emits the decline phrase with extra text around it, backend
+    normalizes the saved answer to the exact decline contract.
+11. Answer, sources, timing, and debug are saved to chat history.
 
 ## Prompt Versioning
 
@@ -97,7 +99,7 @@ as `RAG_PROMPT_VERSION`.
 The current version is:
 
 ```text
-rag-grounded-v3
+rag-grounded-v4
 ```
 
 Each chat response stores `debug.promptVersion`. Eval results also record the
@@ -205,7 +207,9 @@ npm run eval:generated
 
 - `eval:seed`: reindexes stable seed docs into `documentScope=eval`, runs
   `questions.seed.json`, and writes `last-seed-report.json`.
-- `eval:current`: runs `questions.json` against the current user document base.
+- `eval:current`: legacy/static user-scope dataset. It runs `questions.json`
+  against the current user document base, but is only useful when that static
+  file matches the uploaded user KB.
 - `eval:generate`: builds `questions.generated.json` from current user
   document chunks.
 - `eval:generated`: regenerates `questions.generated.json`, runs those cases
@@ -216,6 +220,10 @@ Generated eval foundation is deterministic/extractive: it selects useful chunks,
 builds answerable questions from chunk keywords, stores expected answer/source
 keywords, evidence quotes, and chunk spans, then adds a few stable unanswerable
 cases. It does not use an LLM to author questions yet.
+
+For arbitrary uploaded documents, `eval:generated` is the primary user-KB smoke
+test. `eval:seed` remains the regression benchmark. `eval:current` is retained
+for compatibility with manually curated `questions.json`.
 
 Current stable seed benchmark after RRF/scope changes:
 

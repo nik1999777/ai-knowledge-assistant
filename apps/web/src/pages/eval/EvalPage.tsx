@@ -31,9 +31,9 @@ export function EvalPage() {
         <Eyebrow>RAG Eval</Eyebrow>
         <Title>Качество retrieval и decision policy</Title>
         <Subtitle>
-          Seed benchmark нужен для воспроизводимой проверки качества. Generated
-          report строит кейсы из текущих user-документов и прогоняет их через
-          тот же RAG flow.
+          Seed benchmark нужен для воспроизводимой regression-проверки.
+          Generated User KB строит smoke-test из текущих документов. Legacy
+          Current KB оставлен только для старого статического набора вопросов.
         </Subtitle>
         <ModeToggle>
           <ModeButton
@@ -48,14 +48,14 @@ export function EvalPage() {
             onClick={() => setReportMode("current")}
             $active={reportMode === "current"}
           >
-            Current KB
+            Legacy Current
           </ModeButton>
           <ModeButton
             type="button"
             onClick={() => setReportMode("generated")}
             $active={reportMode === "generated"}
           >
-            Generated KB
+            Generated User KB
           </ModeButton>
         </ModeToggle>
       </HeroCard>
@@ -669,9 +669,9 @@ function getModeCommand(mode: EvalReportMode) {
     case "seed":
       return "Команда: cd apps/api && npm run eval:seed";
     case "generated":
-      return "Команда: cd apps/api && npm run eval:generated";
+      return "Команда: cd apps/api && npm run eval:generated · основной smoke-test для текущей user KB";
     case "current":
-      return "Команда: cd apps/api && npm run eval:current";
+      return "Команда: cd apps/api && npm run eval:current · legacy static questions.json, обычно не подходит для произвольной user KB";
   }
 }
 

@@ -28,6 +28,7 @@ const MIN_TOKENS_FOR_EVIDENCE = 2;
 const DECLINE_SCORE_THRESHOLD = env.DECLINE_SCORE_THRESHOLD;
 const ANSWER_SCORE_THRESHOLD = env.ANSWER_SCORE_THRESHOLD;
 const RRF_K = 60;
+const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
 
 type StreamChunkHandler = (chunk: string) => void;
 
@@ -58,7 +59,7 @@ export async function streamChatWithKnowledgeBase(
   });
 
   if (context.shouldDecline) {
-    const answer = "Я не знаю на основе предоставленных данных.";
+    const answer = DECLINE_ANSWER;
     const totalMs = Number((performance.now() - totalStart).toFixed(2));
 
     onChunk(answer);
@@ -102,6 +103,8 @@ export async function streamChatWithKnowledgeBase(
     onChunk(chunk);
   });
 
+  answer = normalizeDeclineAnswer(answer);
+
   const llmMs = Number((performance.now() - llmStart).toFixed(2));
   const totalMs = Number((performance.now() - totalStart).toFixed(2));
 
@@ -132,6 +135,16 @@ export async function streamChatWithKnowledgeBase(
       },
     },
   };
+}
+
+function normalizeDeclineAnswer(answer: string) {
+  const normalized = answer.toLocaleLowerCase();
+
+  if (normalized.includes("не знаю на основе предоставленных данных")) {
+    return DECLINE_ANSWER;
+  }
+
+  return answer;
 }
 
 async function buildRagChatContext(
