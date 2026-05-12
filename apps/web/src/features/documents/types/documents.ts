@@ -10,7 +10,7 @@ export type DocumentsResponse = {
 export type DocumentDetailResponse = {
   docId: string;
   title: string;
-  sourceType: "txt" | "md" | "pdf" | "docx";
+  sourceType: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   originalFileName: string;
   textContent: string;
   characters: number;
@@ -33,7 +33,7 @@ export type IngestResponse = {
   title: string;
   chunks: number;
   characters: number;
-  sourceType?: "text" | "txt" | "md" | "pdf" | "docx";
+  sourceType?: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   warnings?: string[];
 };
 

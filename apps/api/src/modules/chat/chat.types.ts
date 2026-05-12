@@ -1,7 +1,7 @@
 export type RagSource = {
   docId: string;
   title: string;
-  sourceType?: "txt" | "md" | "pdf" | "docx";
+  sourceType?: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   text: string;
   chunkIndex: number;
   chunkLen?: number;

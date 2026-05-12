@@ -22,8 +22,8 @@ export function IngestPanel({
     <Section>
       <SectionTitle>Добавить документ</SectionTitle>
       <SectionText>
-        Загрузка документов работает через upload файлов `.txt`, `.md`, `.pdf`
-        и `.docx`.
+        Загрузка документов работает через upload файлов `.txt`, `.md`, `.csv`,
+        `.pdf`, `.docx` и `.zip` с текстовыми файлами внутри.
         `docId` создаётся на backend автоматически.
       </SectionText>
 
@@ -38,7 +38,7 @@ export function IngestPanel({
           <HiddenFileInput
             id={inputId}
             type="file"
-            accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".txt,.md,.csv,.pdf,.docx,.zip,text/plain,text/markdown,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed"
             onClick={(event) => {
               event.currentTarget.value = "";
             }}
@@ -51,8 +51,9 @@ export function IngestPanel({
             </FilePickerMeta>
           </FilePicker>
           <HelperText>
-            Поддерживаются `.txt`, `.md`, `.pdf` и `.docx`. Название документа
-            будет взято из имени файла.
+            Для экспорта Notion выбери Markdown & CSV, включи subpages/folders
+            и загрузи получившийся `.zip`. Название документа будет взято из
+            имени файла.
           </HelperText>
           {selectedFileName && (
             <SelectedFile>Выбран файл: {selectedFileName}</SelectedFile>

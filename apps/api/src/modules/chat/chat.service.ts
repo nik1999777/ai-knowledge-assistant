@@ -164,7 +164,7 @@ async function buildRagChatContext(
     title: String(item.payload?.title ?? ""),
     sourceType:
       typeof item.payload?.sourceType === "string"
-        ? (item.payload.sourceType as "txt" | "md" | "pdf" | "docx")
+        ? (item.payload.sourceType as RagSource["sourceType"])
         : undefined,
     text: String(item.payload?.text ?? ""),
     chunkIndex: Number(item.payload?.chunkIndex ?? 0),
@@ -276,7 +276,7 @@ function buildLexicalSources(
   documents: Array<{
     docId: string;
     title: string;
-    sourceType: "txt" | "md" | "pdf" | "docx";
+    sourceType: NonNullable<RagSource["sourceType"]>;
     textContent: string;
     lexicalRank: number;
   }>,

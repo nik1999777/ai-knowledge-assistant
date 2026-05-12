@@ -4,7 +4,7 @@ import { tokenizeForSearch } from "../utils/tokenization.js";
 
 const pool = getPostgresPool();
 
-export type DocumentSourceType = "txt" | "md" | "pdf" | "docx";
+export type DocumentSourceType = "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
 export type DocumentScope = "user" | "eval";
 
 export type CreateDocumentInput = {

@@ -23,7 +23,7 @@ export function useDocumentsPage() {
 
   async function handleUpload() {
     if (!selectedFile) {
-      setUploadMessage("Выбери файл .txt, .md, .pdf или .docx");
+      setUploadMessage("Выбери файл .txt, .md, .csv, .pdf, .docx или .zip");
       return;
     }
 

@@ -150,12 +150,13 @@ export const STAGES: StageInfo[] = [
   {
     id: "upload",
     title: "1. Upload",
-    subtitle: "TXT / MD / PDF / DOCX",
+    subtitle: "TXT / MD / CSV / PDF / DOCX / ZIP",
     goal: "Принять файл, проверить формат и отправить его в ingestion pipeline.",
     flow: [
       "Web отправляет multipart-запрос на backend.",
       "Fastify controller валидирует файл и запускает ingest service.",
       "Parser извлекает текст и warnings, если документ прочитан не идеально.",
+      "ZIP parser собирает поддерживаемые `.txt`, `.md` и `.csv` файлы внутри в один archive document.",
     ],
     metrics: ["upload_success_rate", "ingest_error_rate", "parse_warning_rate"],
     failures: [
@@ -430,7 +431,7 @@ export const DEBUG_FIELDS = [
 ];
 
 export const API_ROUTES = [
-  ["POST /documents", "Загрузить файл и запустить ingestion.", "documents.controller -> document-ingest.service"],
+  ["POST /documents", "Загрузить файл `.txt/.md/.csv/.pdf/.docx/.zip` и запустить ingestion.", "documents.controller -> document-ingest.service"],
   ["GET /documents", "Список user documents, scoped query/search.", "documents.repository"],
   ["GET /documents/:docId", "Детальная страница документа и chunk preview.", "document-query.service"],
   ["DELETE /documents/:docId", "Удалить документ из Postgres и Qdrant.", "document-delete.service"],
@@ -691,11 +692,11 @@ export const PAYLOAD_EXAMPLES: PayloadExample[] = [
   {
     title: "Upload request",
     explanation:
-      "Frontend отправляет файл как multipart. Backend не получает JSON с текстом: он сам парсит файл, чтобы контролировать extraction и warnings.",
+      "Frontend отправляет файл как multipart. Backend не получает JSON с текстом: он сам парсит файл, чтобы контролировать extraction и warnings. ZIP uploads разворачиваются в один archive document из поддерживаемых `.txt`, `.md` и `.csv` файлов внутри.",
     code: `POST /documents
 Content-Type: multipart/form-data
 
-file: rag-basics.md`,
+file: notion-export.zip`,
   },
   {
     title: "Parsed document",

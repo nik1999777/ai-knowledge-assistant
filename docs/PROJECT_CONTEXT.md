@@ -61,7 +61,9 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 
 ## Core Pipeline
 
-1. User uploads `.txt`, `.md`, `.pdf`, or `.docx`.
+1. User uploads `.txt`, `.md`, `.csv`, `.pdf`, `.docx`, or `.zip`.
+   ZIP uploads are treated as archive documents and index supported text files
+   inside, such as Markdown/CSV exports with folders.
 2. Backend parses the document.
 3. Backend chunks text into retrieval units.
    Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
