@@ -102,6 +102,32 @@ These values are passed through Ollama `/api/generate` `options` for both
 streaming chat and non-streaming LLM calls. Each chat/eval debug payload stores
 them as `debug.generationOptions`.
 
+## RAG Engineering Principles
+
+Do not improve the assistant by accumulating document-specific `if` statements
+or narrow prompt rules for particular wording patterns. This project should work
+for arbitrary user uploads, so fixes must stay portable across domains.
+
+Avoid patterns like:
+
+- `if document text contains "roles:", ask a roles-specific question`
+- prompt rules for one phrasing such as "if the question asks exactly X..."
+- code branches tied to current sample documents, titles, sections, or business
+  vocabulary
+
+Prefer production-style changes:
+
+- general retrieval, ranking, chunking, and metadata contracts
+- compact prompt policies that express invariant behavior
+- prompt/version/generation metadata in debug reports
+- eval cases that expose failures without hardcoding the fix
+- deterministic or validated generators with broad heuristics, not domain rules
+
+If a bug appears only for one document shape, first ask what general capability
+is missing: better chunk metadata, source context, citation contract, parser
+output, retrieval trace, or eval coverage. Only add a special case if it is a
+well-named, documented, domain-independent parser/format rule.
+
 ## Retrieval
 
 Retrieval is hybrid:
