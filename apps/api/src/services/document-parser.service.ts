@@ -249,23 +249,117 @@ function normalizeMarkdownText(text: string) {
 }
 
 function normalizeMarkdownLine(line: string) {
-  if (isStandaloneLocalMarkdownLink(line.trim())) {
+  const links = parseMarkdownLinks(line);
+
+  if (links.length === 1 && isStandaloneLocalMarkdownLink(line, links[0])) {
     return null;
   }
 
-  return line
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  return replaceMarkdownLinksWithLabels(line, links);
 }
 
-function isStandaloneLocalMarkdownLink(line: string) {
-  const match = line.match(/^[-*]?\s*\[([^\]]+)\]\(([^)]+)\)\s*$/);
+type MarkdownLink = {
+  start: number;
+  end: number;
+  label: string;
+  target: string;
+};
 
-  if (!match?.[2]) {
+function parseMarkdownLinks(line: string) {
+  const links: MarkdownLink[] = [];
+  let index = 0;
+
+  while (index < line.length) {
+    const openBracket = line.indexOf("[", index);
+
+    if (openBracket === -1) {
+      break;
+    }
+
+    const closeBracket = line.indexOf("]", openBracket + 1);
+
+    if (closeBracket === -1 || line[closeBracket + 1] !== "(") {
+      index = openBracket + 1;
+      continue;
+    }
+
+    const targetStart = closeBracket + 2;
+    const targetEnd = findMarkdownLinkTargetEnd(line, targetStart);
+
+    if (targetEnd === -1) {
+      index = closeBracket + 1;
+      continue;
+    }
+
+    links.push({
+      start: openBracket,
+      end: targetEnd + 1,
+      label: line.slice(openBracket + 1, closeBracket),
+      target: line.slice(targetStart, targetEnd),
+    });
+    index = targetEnd + 1;
+  }
+
+  return links;
+}
+
+function findMarkdownLinkTargetEnd(line: string, start: number) {
+  let depth = 0;
+
+  for (let index = start; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === "\\" && index + 1 < line.length) {
+      index += 1;
+      continue;
+    }
+
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      if (depth === 0) {
+        return index;
+      }
+
+      depth -= 1;
+    }
+  }
+
+  return -1;
+}
+
+function replaceMarkdownLinksWithLabels(line: string, links: MarkdownLink[]) {
+  if (links.length === 0) {
+    return line;
+  }
+
+  let result = "";
+  let cursor = 0;
+
+  for (const link of links) {
+    const prefixEnd =
+      link.start > 0 && line[link.start - 1] === "!" ? link.start - 1 : link.start;
+    result += line.slice(cursor, prefixEnd);
+    result += link.label;
+    cursor = link.end;
+  }
+
+  result += line.slice(cursor);
+
+  return result;
+}
+
+function isStandaloneLocalMarkdownLink(line: string, link: MarkdownLink) {
+  const surroundingText = `${line.slice(0, link.start)}${line.slice(link.end)}`;
+
+  if (!/^[-*]?\s*$/.test(surroundingText)) {
     return false;
   }
 
-  const target = match[2].trim().toLowerCase();
+  const target = link.target.trim().toLowerCase();
 
   return (
     !target.startsWith("http://") &&
