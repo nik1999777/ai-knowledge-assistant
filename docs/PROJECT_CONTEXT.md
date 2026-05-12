@@ -68,6 +68,8 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
    Markdown link targets are normalized away for indexing/display, so
    `[visible title](long/path-or-url)` contributes the visible title without
    polluting retrieval with long encoded paths.
+   Standalone local `.md` links are treated as archive navigation and removed
+   from indexed text, so table-of-contents pages do not outrank actual content.
 3. Backend chunks text into retrieval units.
    Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
    `endOffset` for source inspection.

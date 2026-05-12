@@ -241,8 +241,39 @@ function decodePathSegment(segment: string) {
 
 function normalizeMarkdownText(text: string) {
   return text
+    .split("\n")
+    .map(normalizeMarkdownLine)
+    .filter((line) => line !== null)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function normalizeMarkdownLine(line: string) {
+  if (isStandaloneLocalMarkdownLink(line.trim())) {
+    return null;
+  }
+
+  return line
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+}
+
+function isStandaloneLocalMarkdownLink(line: string) {
+  const match = line.match(/^[-*]?\s*\[([^\]]+)\]\(([^)]+)\)\s*$/);
+
+  if (!match?.[2]) {
+    return false;
+  }
+
+  const target = match[2].trim().toLowerCase();
+
+  return (
+    !target.startsWith("http://") &&
+    !target.startsWith("https://") &&
+    !target.startsWith("mailto:") &&
+    !target.startsWith("#") &&
+    (target.endsWith(".md") || target.includes(".md#"))
+  );
 }
 
 function formatCsvText(text: string) {
