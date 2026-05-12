@@ -84,7 +84,7 @@ as `RAG_PROMPT_VERSION`.
 The current version is:
 
 ```text
-rag-grounded-v2
+rag-grounded-v3
 ```
 
 Each chat response stores `debug.promptVersion`. Eval results also record the
