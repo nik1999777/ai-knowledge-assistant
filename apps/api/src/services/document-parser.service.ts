@@ -8,6 +8,7 @@ export type ParsedDocument = {
   title: string;
   text: string;
   sourceType: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
+  originalFileName?: string;
   warnings: string[];
 };
 
@@ -29,6 +30,34 @@ const SUPPORTED_EXTENSIONS = new Set([
 ]);
 const ARCHIVE_TEXT_EXTENSIONS = new Set([".txt", ".md", ".csv"]);
 const MAX_ARCHIVE_TEXT_FILES = 100;
+
+export async function parseUploadedDocuments(
+  input: ParseDocumentInput,
+): Promise<ParsedDocument[]> {
+  const extension = path.extname(input.fileName).toLowerCase();
+
+  if (extension !== ".zip") {
+    return [await parseDocument(input)];
+  }
+
+  if (input.buffer.byteLength === 0) {
+    throw createAppError(400, "Файл пустой");
+  }
+
+  const warnings: string[] = [];
+  const documents = await extractZipDocuments(input.buffer, warnings);
+
+  if (input.mimeType && !isSupportedMimeType(extension, input.mimeType)) {
+    warnings.push(
+      "Расширение файла поддерживается, но MIME type не совпадает с ожидаемым",
+    );
+  }
+
+  return documents.map((document) => ({
+    ...document,
+    warnings: [...warnings, ...document.warnings],
+  }));
+}
 
 export async function parseDocument({
   fileName,
@@ -155,6 +184,49 @@ async function extractText(extension: string, buffer: Buffer) {
 }
 
 async function extractZipText(buffer: Buffer, warnings: string[]) {
+  const documents = await extractZipDocuments(buffer, warnings);
+
+  return documents
+    .map(
+      (document) =>
+        `## ${document.originalFileName ?? document.title}\n\n${document.text}`,
+    )
+    .join("\n\n---\n\n");
+}
+
+async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
+  const { files, textFiles } = await getArchiveTextFiles(buffer);
+  const limitedTextFiles = textFiles.slice(0, MAX_ARCHIVE_TEXT_FILES);
+
+  pushArchiveWarnings(files.length, textFiles.length, warnings);
+  const documents: ParsedDocument[] = [];
+
+  for (const file of limitedTextFiles) {
+    const extension = path.extname(file.name).toLowerCase();
+    const content = await file.async("nodebuffer");
+    const text = (await extractText(extension, content)).trim();
+
+    if (!text) {
+      continue;
+    }
+
+    documents.push({
+      title: deriveDocumentTitle(text, file.name),
+      text,
+      sourceType: extension.slice(1) as ParsedDocument["sourceType"],
+      originalFileName: normalizeArchivePath(file.name),
+      warnings: [],
+    });
+  }
+
+  if (documents.length === 0) {
+    throw createAppError(400, "ZIP-архив не содержит читаемого текста");
+  }
+
+  return documents;
+}
+
+async function getArchiveTextFiles(buffer: Buffer) {
   let archive: JSZip;
 
   try {
@@ -177,41 +249,27 @@ async function extractZipText(buffer: Buffer, warnings: string[]) {
     );
   }
 
-  const limitedTextFiles = textFiles.slice(0, MAX_ARCHIVE_TEXT_FILES);
+  return { files, textFiles };
+}
 
-  if (textFiles.length > MAX_ARCHIVE_TEXT_FILES) {
+function pushArchiveWarnings(
+  filesCount: number,
+  textFilesCount: number,
+  warnings: string[],
+) {
+  if (textFilesCount > MAX_ARCHIVE_TEXT_FILES) {
     warnings.push(
-      `В архиве найдено ${textFiles.length} текстовых файлов, проиндексированы первые ${MAX_ARCHIVE_TEXT_FILES}`,
+      `В архиве найдено ${textFilesCount} текстовых файлов, проиндексированы первые ${MAX_ARCHIVE_TEXT_FILES}`,
     );
   }
 
-  const skippedFiles = files.length - textFiles.length;
+  const skippedFiles = filesCount - textFilesCount;
 
   if (skippedFiles > 0) {
     warnings.push(
       `В архиве пропущено файлов без поддерживаемого текстового формата: ${skippedFiles}`,
     );
   }
-
-  const sections: string[] = [];
-
-  for (const file of limitedTextFiles) {
-    const extension = path.extname(file.name).toLowerCase();
-    const content = await file.async("nodebuffer");
-    const text = (await extractText(extension, content)).trim();
-
-    if (!text) {
-      continue;
-    }
-
-    sections.push(`## ${normalizeArchivePath(file.name)}\n\n${text}`);
-  }
-
-  if (sections.length === 0) {
-    throw createAppError(400, "ZIP-архив не содержит читаемого текста");
-  }
-
-  return sections.join("\n\n---\n\n");
 }
 
 function isSystemArchivePath(filePath: string) {
@@ -229,6 +287,29 @@ function normalizeArchivePath(filePath: string) {
     .split("/")
     .map(decodePathSegment)
     .join("/");
+}
+
+function deriveDocumentTitle(text: string, filePath: string) {
+  const heading = text.match(/^#\s+(.+)$/m)?.[1]?.trim();
+
+  if (heading) {
+    return stripMarkdownInlineSyntax(heading);
+  }
+
+  const fileName = path.basename(normalizeArchivePath(filePath), path.extname(filePath));
+  return stripNotionIdSuffix(fileName).trim() || "uploaded-document";
+}
+
+function stripMarkdownInlineSyntax(text: string) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function stripNotionIdSuffix(fileName: string) {
+  return fileName.replace(/\s+[0-9a-f]{32}$/i, "");
 }
 
 function decodePathSegment(segment: string) {

@@ -35,10 +35,12 @@ export function useDocumentsPage() {
         json.warnings && json.warnings.length > 0
           ? ` Предупреждения: ${json.warnings.join(" ")}`
           : "";
+      const uploadSummary =
+        json.totalDocuments && json.totalDocuments > 1
+          ? `Архив успешно загружен. Документов: ${json.totalDocuments}. Chunks: ${json.chunks}. Символов: ${json.characters}.${warnings}`
+          : `Файл "${json.title}" успешно загружен. Chunks: ${json.chunks}. Символов: ${json.characters}.${warnings}`;
 
-      setUploadMessage(
-        `Файл "${json.title}" успешно загружен. Chunks: ${json.chunks}. Символов: ${json.characters}.${warnings}`,
-      );
+      setUploadMessage(uploadSummary);
       setSelectedFile(null);
       setAppError("");
     } catch (err) {

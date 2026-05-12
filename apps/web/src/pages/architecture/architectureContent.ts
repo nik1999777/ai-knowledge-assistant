@@ -158,7 +158,7 @@ export const STAGES: StageInfo[] = [
       "Parser извлекает текст и warnings, если документ прочитан не идеально.",
       "Markdown links нормализуются до видимого текста, чтобы длинные URL/path targets не загрязняли retrieval.",
       "Standalone local `.md` links считаются archive navigation и не индексируются как содержательные chunks.",
-      "ZIP parser собирает поддерживаемые `.txt`, `.md` и `.csv` файлы внутри в один archive document.",
+      "ZIP parser индексирует поддерживаемые `.txt`, `.md` и `.csv` файлы внутри как отдельные documents с archive path в `originalFileName`.",
     ],
     metrics: ["upload_success_rate", "ingest_error_rate", "parse_warning_rate"],
     failures: [
@@ -694,7 +694,7 @@ export const PAYLOAD_EXAMPLES: PayloadExample[] = [
   {
     title: "Upload request",
     explanation:
-      "Frontend отправляет файл как multipart. Backend не получает JSON с текстом: он сам парсит файл, чтобы контролировать extraction и warnings. ZIP uploads разворачиваются в один archive document из поддерживаемых `.txt`, `.md` и `.csv` файлов внутри.",
+      "Frontend отправляет файл как multipart. Backend не получает JSON с текстом: он сам парсит файл, чтобы контролировать extraction и warnings. ZIP uploads разворачиваются в отдельные documents для поддерживаемых `.txt`, `.md` и `.csv` файлов внутри.",
     code: `POST /documents
 Content-Type: multipart/form-data
 

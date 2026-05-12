@@ -1,6 +1,9 @@
 import { createDocument, deleteDocumentRecordByDocId } from "../../repositories/documents.repository.js";
 import { chunkDocument } from "../../services/chunk.service.js";
-import { parseDocument } from "../../services/document-parser.service.js";
+import {
+  parseUploadedDocuments,
+  type ParsedDocument,
+} from "../../services/document-parser.service.js";
 import { getEmbedding } from "../../services/embeddings.service.js";
 import { saveChunks } from "../../clients/qdrant.client.js";
 import { createAppError } from "../../utils/app-error.js";
@@ -15,7 +18,51 @@ export async function ingestUploadedDocument(input: {
   mimeType?: string;
   buffer: Buffer;
 }): Promise<IngestResponse> {
-  const parsedDocument = await parseDocument(input);
+  const parsedDocuments = await parseUploadedDocuments(input);
+  const results = [];
+
+  if (input.docId && parsedDocuments.length > 1) {
+    throw createAppError(400, "docId можно передать только для одиночного документа");
+  }
+
+  for (const parsedDocument of parsedDocuments) {
+    results.push(
+      await ingestParsedDocument({
+        docId: parsedDocuments.length === 1 ? input.docId : undefined,
+        documentScope: input.documentScope,
+        originalFileName: parsedDocument.originalFileName ?? input.fileName,
+        parsedDocument,
+      }),
+    );
+  }
+
+  if (results.length === 1) {
+    return results[0];
+  }
+
+  const warnings = Array.from(
+    new Set(results.flatMap((result) => result.warnings ?? [])),
+  );
+
+  return {
+    docId: results[0].docId,
+    title: input.fileName,
+    chunks: results.reduce((total, result) => total + result.chunks, 0),
+    characters: results.reduce((total, result) => total + result.characters, 0),
+    sourceType: "zip",
+    warnings,
+    documents: results,
+    totalDocuments: results.length,
+  };
+}
+
+async function ingestParsedDocument(input: {
+  docId?: string;
+  documentScope?: DocumentScope;
+  originalFileName: string;
+  parsedDocument: ParsedDocument;
+}): Promise<IngestResponse> {
+  const { parsedDocument } = input;
   const docId = input.docId ?? crypto.randomUUID();
   const chunks = chunkDocument(parsedDocument.text);
 
@@ -32,7 +79,7 @@ export async function ingestUploadedDocument(input: {
     documentScope: input.documentScope ?? "user",
     title: parsedDocument.title,
     sourceType: parsedDocument.sourceType,
-    originalFileName: input.fileName,
+    originalFileName: input.originalFileName,
     textContent: parsedDocument.text,
     characters: parsedDocument.text.length,
     chunksCount: chunks.length,

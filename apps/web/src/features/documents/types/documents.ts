@@ -28,13 +28,18 @@ export type DocumentDetailResponse = {
   }>;
 };
 
-export type IngestResponse = {
+export type IngestedDocumentSummary = {
   docId: string;
   title: string;
   chunks: number;
   characters: number;
   sourceType?: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   warnings?: string[];
+};
+
+export type IngestResponse = IngestedDocumentSummary & {
+  documents?: IngestedDocumentSummary[];
+  totalDocuments?: number;
 };
 
 export type DeleteDocumentResponse = {

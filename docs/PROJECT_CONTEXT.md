@@ -62,8 +62,9 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 ## Core Pipeline
 
 1. User uploads `.txt`, `.md`, `.csv`, `.pdf`, `.docx`, or `.zip`.
-   ZIP uploads are treated as archive documents and index supported text files
-   inside, such as Markdown/CSV exports with folders.
+   ZIP uploads are treated as archive imports: supported text files inside,
+   such as Markdown/CSV exports with folders, are indexed as separate documents
+   with their archive path stored as `originalFileName`.
 2. Backend parses the document.
    Markdown link targets are normalized away for indexing/display, so
    `[visible title](long/path-or-url)` contributes the visible title without
