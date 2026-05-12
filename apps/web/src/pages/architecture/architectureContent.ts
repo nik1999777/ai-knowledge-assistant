@@ -158,6 +158,7 @@ export const STAGES: StageInfo[] = [
       "Parser извлекает текст и warnings, если документ прочитан не идеально.",
       "Markdown links нормализуются до видимого текста, чтобы длинные URL/path targets не загрязняли retrieval.",
       "Standalone local `.md` links считаются archive navigation и не индексируются как содержательные chunks.",
+      "Markdown pages, которые почти целиком состоят из headings и local `.md` links, пропускаются как navigation-only.",
       "ZIP parser индексирует поддерживаемые `.txt`, `.md` и `.csv` файлы внутри как отдельные documents с archive path в `originalFileName`.",
     ],
     metrics: ["upload_success_rate", "ingest_error_rate", "parse_warning_rate"],

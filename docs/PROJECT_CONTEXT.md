@@ -71,6 +71,8 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
    polluting retrieval with long encoded paths.
    Standalone local `.md` links are treated as archive navigation and removed
    from indexed text, so table-of-contents pages do not outrank actual content.
+   Archive Markdown files that are mostly standalone local links and headings
+   are skipped as navigation-only pages.
 3. Backend chunks text into retrieval units.
    Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
    `endOffset` for source inspection.

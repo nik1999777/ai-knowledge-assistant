@@ -200,6 +200,7 @@ async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
 
   pushArchiveWarnings(files.length, textFiles.length, warnings);
   const documents: ParsedDocument[] = [];
+  let skippedNavigationDocuments = 0;
 
   for (const file of limitedTextFiles) {
     const extension = path.extname(file.name).toLowerCase();
@@ -210,6 +211,11 @@ async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
       continue;
     }
 
+    if (extension === ".md" && isArchiveNavigationMarkdown(content.toString("utf-8"), text)) {
+      skippedNavigationDocuments += 1;
+      continue;
+    }
+
     documents.push({
       title: deriveDocumentTitle(text, file.name),
       text,
@@ -217,6 +223,12 @@ async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
       originalFileName: normalizeArchivePath(file.name),
       warnings: [],
     });
+  }
+
+  if (skippedNavigationDocuments > 0) {
+    warnings.push(
+      `В архиве пропущено навигационных Markdown-страниц без собственного содержательного текста: ${skippedNavigationDocuments}`,
+    );
   }
 
   if (documents.length === 0) {
@@ -337,6 +349,47 @@ function normalizeMarkdownLine(line: string) {
   }
 
   return replaceMarkdownLinksWithLabels(line, links);
+}
+
+function isArchiveNavigationMarkdown(rawText: string, normalizedText: string) {
+  const localNavigationLinks = rawText
+    .split("\n")
+    .filter((line) => {
+      const links = parseMarkdownLinks(line);
+      return links.length === 1 && isStandaloneLocalMarkdownLink(line, links[0]);
+    }).length;
+
+  if (localNavigationLinks < 2) {
+    return false;
+  }
+
+  const substantiveLines = normalizedText
+    .split("\n")
+    .filter((line) => isSubstantiveMarkdownLine(line)).length;
+
+  return substantiveLines <= 4;
+}
+
+function isSubstantiveMarkdownLine(line: string) {
+  const trimmed = stripMarkdownInlineSyntax(line.trim());
+
+  if (
+    !trimmed ||
+    trimmed.startsWith("#") ||
+    trimmed === "---" ||
+    trimmed.startsWith(">") ||
+    /^[-*]\s*$/.test(trimmed)
+  ) {
+    return false;
+  }
+
+  const withoutListMarker = trimmed.replace(/^[-*]\s+/, "").trim();
+
+  if (!/[.!?。！？:：]/u.test(withoutListMarker) && withoutListMarker.length < 80) {
+    return false;
+  }
+
+  return /[\p{L}\p{N}]/u.test(withoutListMarker);
 }
 
 type MarkdownLink = {
