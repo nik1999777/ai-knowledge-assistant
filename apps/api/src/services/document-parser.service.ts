@@ -462,6 +462,22 @@ function findMarkdownLinkTargetEnd(line: string, start: number) {
     }
   }
 
+  return findPermissiveMarkdownLinkTargetEnd(line, start);
+}
+
+function findPermissiveMarkdownLinkTargetEnd(line: string, start: number) {
+  const lastCloseParen = line.lastIndexOf(")");
+
+  if (lastCloseParen < start) {
+    return -1;
+  }
+
+  const target = line.slice(start, lastCloseParen).trim().toLowerCase();
+
+  if (target.endsWith(".md") || target.includes(".md#")) {
+    return lastCloseParen;
+  }
+
   return -1;
 }
 

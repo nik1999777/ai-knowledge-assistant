@@ -73,6 +73,8 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
    from indexed text, so table-of-contents pages do not outrank actual content.
    Archive Markdown files that are mostly standalone local links and headings
    are skipped as navigation-only pages.
+   Markdown link parsing tolerates exported file names with unbalanced
+   parentheses when the target is still a local `.md` path.
 3. Backend chunks text into retrieval units.
    Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
    `endOffset` for source inspection.
