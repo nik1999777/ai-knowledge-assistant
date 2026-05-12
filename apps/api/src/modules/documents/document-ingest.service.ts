@@ -81,6 +81,7 @@ async function ingestParsedDocument(input: {
     sourceType: parsedDocument.sourceType,
     originalFileName: input.originalFileName,
     textContent: parsedDocument.text,
+    rawTextContent: parsedDocument.rawText,
     characters: parsedDocument.text.length,
     chunksCount: chunks.length,
     warnings: parsedDocument.warnings,

@@ -449,8 +449,8 @@ export const API_ROUTES = [
 export const STORAGE_ITEMS = [
   {
     title: "Postgres",
-    body: "Хранит documents, chat_sessions, chat_messages, metadata, full text и `search_vector` для lexical retrieval.",
-    fields: ["document_scope", "doc_id", "text_content", "search_vector", "sources JSONB", "debug JSONB"],
+    body: "Хранит documents, chat_sessions, chat_messages, metadata, raw text для inspection, normalized text для retrieval и `search_vector` для lexical retrieval.",
+    fields: ["document_scope", "doc_id", "raw_text_content", "text_content", "search_vector", "sources JSONB", "debug JSONB"],
   },
   {
     title: "Qdrant",

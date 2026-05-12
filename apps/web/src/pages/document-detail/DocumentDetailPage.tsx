@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 import { AppHeader } from "../../shared/components/AppHeader";
@@ -9,6 +9,9 @@ import { useDocumentDetailPage } from "./useDocumentDetailPage";
 export function DocumentDetailPage() {
   const { activeChunkIndex, activeSnippet, data, isLoading, error, formatDate } =
     useDocumentDetailPage();
+  const [textView, setTextView] = useState<"readable" | "indexed" | "original">(
+    "readable",
+  );
 
   useEffect(() => {
     if (!data || activeChunkIndex === null) {
@@ -83,6 +86,42 @@ export function DocumentDetailPage() {
             )}
 
             <ContentSection>
+              <SectionHeader>
+                <SectionTitle>Document Text</SectionTitle>
+                <TextTabs aria-label="Document text view">
+                  <TextTab
+                    type="button"
+                    $active={textView === "readable"}
+                    onClick={() => setTextView("readable")}
+                  >
+                    Readable
+                  </TextTab>
+                  <TextTab
+                    type="button"
+                    $active={textView === "indexed"}
+                    onClick={() => setTextView("indexed")}
+                  >
+                    Indexed
+                  </TextTab>
+                  <TextTab
+                    type="button"
+                    $active={textView === "original"}
+                    onClick={() => setTextView("original")}
+                  >
+                    Original
+                  </TextTab>
+                </TextTabs>
+              </SectionHeader>
+              {textView === "readable" ? (
+                <ReadableBlock>{renderReadableMarkdown(data.textContent)}</ReadableBlock>
+              ) : (
+                <ContentBlock>
+                  {textView === "original" ? data.rawTextContent : data.textContent}
+                </ContentBlock>
+              )}
+            </ContentSection>
+
+            <ContentSection>
               <SectionTitle>Chunks</SectionTitle>
               <ChunksGrid>
                 {data.chunks.map((chunk) => (
@@ -110,18 +149,14 @@ export function DocumentDetailPage() {
                 ))}
               </ChunksGrid>
             </ContentSection>
-
-            <ContentSection>
-              <SectionTitle>Extracted Text</SectionTitle>
-              <ContentBlock>{data.textContent}</ContentBlock>
-            </ContentSection>
           </MainCard>
 
           <SideCard>
             <SectionTitle>Inspect</SectionTitle>
             <SideText>
-              Страница показывает не только полный extracted text, но и те же
-              chunk-ы, которые используются в retrieval flow.
+              Readable показывает normalized Markdown в удобном виде. Indexed
+              показывает текст, который идет в search/chunking. Original
+              показывает raw text из исходного файла.
             </SideText>
             <SideText>
               Если открыть источник из чата, связанный chunk будет подсвечен и
@@ -269,10 +304,95 @@ const WarningItem = styled.li`
 
 const ContentSection = styled.section``;
 
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+`;
+
 const SectionTitle = styled.h3`
   margin-top: 0;
   margin-bottom: 12px;
   font-size: 18px;
+`;
+
+const TextTabs = styled.div`
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+`;
+
+const TextTab = styled.button<{ $active: boolean }>`
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--accent-strong)" : "var(--text-muted)")};
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+`;
+
+const ReadableBlock = styled.div`
+  line-height: 1.75;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  color: var(--text-secondary);
+  max-height: 70vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+
+  h1,
+  h2,
+  h3 {
+    color: var(--text-primary);
+    line-height: 1.25;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  h2 {
+    font-size: 20px;
+    margin-top: 24px;
+  }
+
+  h3 {
+    font-size: 17px;
+    margin-top: 18px;
+  }
+
+  p {
+    margin: 0 0 12px;
+  }
+
+  ul {
+    margin-top: 0;
+    padding-left: 22px;
+  }
+
+  blockquote {
+    margin: 0 0 14px;
+    padding-left: 14px;
+    border-left: 3px solid rgba(16, 163, 127, 0.35);
+    color: var(--text-muted);
+  }
+
+  code {
+    font-family: "SFMono-Regular", "Menlo", "Monaco", monospace;
+    background: rgba(15, 23, 42, 0.06);
+    border-radius: 6px;
+    padding: 2px 5px;
+  }
 `;
 
 const ContentBlock = styled.pre`
@@ -399,4 +519,92 @@ function formatChunkSpan(startOffset?: number, endOffset?: number) {
   }
 
   return `span ${startOffset}-${endOffset}`;
+}
+
+function renderReadableMarkdown(text: string) {
+  const lines = text.split("\n");
+  const nodes: ReactNode[] = [];
+  let listItems: string[] = [];
+
+  function flushList(key: string) {
+    if (listItems.length === 0) {
+      return;
+    }
+
+    nodes.push(
+      <ul key={key}>
+        {listItems.map((item, index) => (
+          <li key={`${key}-${index}`}>{renderInlineMarkdown(item)}</li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  }
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed === "---") {
+      flushList(`list-${index}`);
+      return;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+
+    if (heading?.[1] && heading[2]) {
+      flushList(`list-${index}`);
+      const level = heading[1].length;
+      const content = renderInlineMarkdown(heading[2]);
+
+      if (level === 1) {
+        nodes.push(<h1 key={index}>{content}</h1>);
+      } else if (level === 2) {
+        nodes.push(<h2 key={index}>{content}</h2>);
+      } else {
+        nodes.push(<h3 key={index}>{content}</h3>);
+      }
+
+      return;
+    }
+
+    const listItem = trimmed.match(/^[-*]\s+(.+)$/);
+
+    if (listItem?.[1]) {
+      listItems.push(listItem[1]);
+      return;
+    }
+
+    if (trimmed.startsWith(">")) {
+      flushList(`list-${index}`);
+      nodes.push(
+        <blockquote key={index}>
+          {renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}
+        </blockquote>,
+      );
+      return;
+    }
+
+    flushList(`list-${index}`);
+    nodes.push(<p key={index}>{renderInlineMarkdown(trimmed)}</p>);
+  });
+
+  flushList("list-end");
+
+  return nodes;
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return <code key={index}>{part.slice(1, -1)}</code>;
+    }
+
+    return part;
+  });
 }

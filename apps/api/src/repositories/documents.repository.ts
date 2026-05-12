@@ -14,6 +14,7 @@ export type CreateDocumentInput = {
   sourceType: DocumentSourceType;
   originalFileName: string;
   textContent: string;
+  rawTextContent: string;
   characters: number;
   chunksCount: number;
   warnings: string[];
@@ -48,6 +49,7 @@ type DocumentRow = {
   source_type: DocumentSourceType;
   original_file_name: string;
   text_content: string;
+  raw_text_content: string;
   characters: number;
   chunks_count: number;
   warnings: string[];
@@ -65,11 +67,12 @@ export async function createDocument(input: CreateDocumentInput) {
         source_type,
         original_file_name,
         text_content,
+        raw_text_content,
         characters,
         chunks_count,
         warnings
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
     `,
     [
       input.docId,
@@ -78,6 +81,7 @@ export async function createDocument(input: CreateDocumentInput) {
       input.sourceType,
       input.originalFileName,
       input.textContent,
+      input.rawTextContent,
       input.characters,
       input.chunksCount,
       JSON.stringify(input.warnings),
@@ -131,6 +135,7 @@ export async function getDocumentByDocId(docId: string) {
         source_type,
         original_file_name,
         text_content,
+        raw_text_content,
         characters,
         chunks_count,
         warnings,
@@ -156,6 +161,7 @@ export async function getDocumentByDocId(docId: string) {
     sourceType: row.source_type,
     originalFileName: row.original_file_name,
     textContent: row.text_content,
+    rawTextContent: row.raw_text_content,
     characters: row.characters,
     chunksCount: row.chunks_count,
     warnings: Array.isArray(row.warnings) ? row.warnings : [],

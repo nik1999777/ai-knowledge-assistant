@@ -13,6 +13,7 @@ export type DocumentDetailResponse = {
   sourceType: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   originalFileName: string;
   textContent: string;
+  rawTextContent: string;
   characters: number;
   chunksCount: number;
   warnings: string[];

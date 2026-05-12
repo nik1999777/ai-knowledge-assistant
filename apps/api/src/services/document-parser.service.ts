@@ -7,6 +7,7 @@ import { createAppError } from "../utils/app-error.js";
 export type ParsedDocument = {
   title: string;
   text: string;
+  rawText: string;
   sourceType: "txt" | "md" | "pdf" | "docx" | "csv" | "zip";
   originalFileName?: string;
   warnings: string[];
@@ -78,6 +79,7 @@ export async function parseDocument({
   }
 
   const archiveWarnings: string[] = [];
+  const rawText = extractRawTextForDisplay(extension, buffer);
   const extractedText =
     extension === ".zip"
       ? await extractZipText(buffer, archiveWarnings)
@@ -107,6 +109,7 @@ export async function parseDocument({
   return {
     title: path.basename(fileName, extension).trim() || "uploaded-document",
     text,
+    rawText: rawText ?? text,
     sourceType: extension.slice(1) as SupportedSourceType,
     warnings,
   };
@@ -205,6 +208,7 @@ async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
   for (const file of limitedTextFiles) {
     const extension = path.extname(file.name).toLowerCase();
     const content = await file.async("nodebuffer");
+    const rawText = extractRawTextForDisplay(extension, content);
     const text = (await extractText(extension, content)).trim();
 
     if (!text) {
@@ -219,6 +223,7 @@ async function extractZipDocuments(buffer: Buffer, warnings: string[]) {
     documents.push({
       title: deriveDocumentTitle(text, file.name),
       text,
+      rawText: rawText ?? text,
       sourceType: extension.slice(1) as ParsedDocument["sourceType"],
       originalFileName: normalizeArchivePath(file.name),
       warnings: [],
@@ -282,6 +287,14 @@ function pushArchiveWarnings(
       `В архиве пропущено файлов без поддерживаемого текстового формата: ${skippedFiles}`,
     );
   }
+}
+
+function extractRawTextForDisplay(extension: string, buffer: Buffer) {
+  if (extension === ".txt" || extension === ".md" || extension === ".csv") {
+    return buffer.toString("utf-8").trim();
+  }
+
+  return null;
 }
 
 function isSystemArchivePath(filePath: string) {

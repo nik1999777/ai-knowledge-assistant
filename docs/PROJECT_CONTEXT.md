@@ -79,8 +79,9 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
    Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
    `endOffset` for source inspection.
 4. Ollama creates embeddings for chunks.
-5. Postgres stores document metadata, full text, FTS `search_vector`, chat
-   sessions, chat messages, sources, timing, and debug JSON.
+5. Postgres stores document metadata, raw text for inspection, normalized
+   indexed text, FTS `search_vector`, chat sessions, chat messages, sources,
+   timing, and debug JSON.
 6. Qdrant stores chunk vectors and payload.
 7. Chat builds a RAG context through hybrid retrieval.
 8. Decision policy chooses answer or safe decline.
