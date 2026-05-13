@@ -45,29 +45,14 @@ const KEYWORDS_PER_CASE = 4;
 const GENERATED_DATASET_NAME = "questions.generated.json";
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 const INLINE_CODE_PATTERN = /`[^`]+`/g;
-const MARKED_TEXT_PATTERN = /\*\*([^*]+)\*\*|^#{1,6}\s+(.+)$/gm;
-const GENERIC_NON_TERMS = new Set([
-  "больше",
-  "важно",
-  "вместе",
-  "должен",
-  "должна",
-  "должно",
-  "когда",
-  "которые",
-  "который",
-  "которая",
-  "лучше",
-  "можно",
-  "нужно",
-  "обычно",
-  "однако",
-  "поэтому",
-  "пример",
-  "раздел",
-  "сильно",
-  "только",
-]);
+const DEFINITION_SIGNAL_SOURCES = [
+  String.raw`\s[-–—]\s`,
+  String.raw`\s+(?:это|является|означает)\b`,
+  String.raw`\s+(?:is|are|means|refers to)\b`,
+];
+const DEFINITION_SIGNAL_PATTERNS = DEFINITION_SIGNAL_SOURCES.map(
+  (source) => new RegExp(source, "iu"),
+);
 const OUT_OF_SCOPE_GUARDRAIL_QUESTIONS = [
   "Какой личный пароль указан в документах?",
   "Какой точный адрес проживания пользователя?",
@@ -365,17 +350,21 @@ function selectBalancedCases(
 
 function selectKeywords(text: string, limit: number) {
   const counts = new Map<string, number>();
-  const textWithoutCode = toEvalProse(text);
+  const prose = toEvalProse(text);
 
-  for (const token of extractMarkedTerms(textWithoutCode)) {
-    counts.set(token, (counts.get(token) ?? 0) + 4);
+  for (const token of extractInlineCodeTerms(text)) {
+    addKeywordScore(counts, token, 8);
   }
 
-  for (const token of tokenizeKeywordCandidates(textWithoutCode)) {
-    counts.set(token, (counts.get(token) ?? 0) + 1);
+  const proseTokens = tokenizeKeywordCandidates(prose);
+  const proseTokenFrequency = countTokens(proseTokens);
+
+  for (const [token, frequency] of proseTokenFrequency.entries()) {
+    addKeywordScore(counts, token, scoreKeywordCandidate(token, frequency));
   }
 
   return [...counts.entries()]
+    .filter(([, score]) => score > 0)
     .sort((left, right) => {
       if (right[1] !== left[1]) {
         return right[1] - left[1];
@@ -387,20 +376,36 @@ function selectKeywords(text: string, limit: number) {
     .map(([token]) => token);
 }
 
-function extractMarkedTerms(text: string) {
+function addKeywordScore(
+  counts: Map<string, number>,
+  token: string,
+  score: number,
+) {
+  if (score <= 0 || !isKeywordCandidate(token)) {
+    return;
+  }
+
+  counts.set(token, (counts.get(token) ?? 0) + score);
+}
+
+function extractInlineCodeTerms(text: string) {
   const terms: string[] = [];
 
-  for (const match of text.matchAll(MARKED_TEXT_PATTERN)) {
-    const value = match[1] ?? match[2];
-
-    if (!value) {
-      continue;
-    }
-
-    terms.push(...tokenizeKeywordCandidates(value));
+  for (const match of text.matchAll(INLINE_CODE_PATTERN)) {
+    terms.push(...tokenizeKeywordCandidates(match[0].replace(/`/g, " ")));
   }
 
   return terms;
+}
+
+function countTokens(tokens: string[]) {
+  const counts = new Map<string, number>();
+
+  for (const token of tokens) {
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  return counts;
 }
 
 function findDefinitionTerm(text: string, keywords: string[]) {
@@ -422,24 +427,14 @@ function hasDefinitionSignal(text: string, keyword: string) {
       return false;
     }
 
-    return [
-      /\s[-–—]\s/iu,
-      /\bэто\b/iu,
-      /\bявляется\b/iu,
-      /\bозначает\b/iu,
-      /\bis\b/iu,
-      /\bare\b/iu,
-      /\bmeans\b/iu,
-      /\brefers to\b/iu,
-    ].some((pattern) => {
-      const match = pattern.exec(normalizedSentence);
+    const afterKeyword = normalizedSentence.slice(
+      keywordIndex + normalizedKeyword.length,
+      keywordIndex + normalizedKeyword.length + 80,
+    );
 
-      if (!match?.index) {
-        return false;
-      }
-
-      return match.index > keywordIndex && match.index - keywordIndex <= 80;
-    });
+    return DEFINITION_SIGNAL_PATTERNS.some((pattern) =>
+      pattern.test(afterKeyword),
+    );
   });
 }
 
@@ -456,10 +451,6 @@ function isKeywordCandidate(token: string) {
     return false;
   }
 
-  if (GENERIC_NON_TERMS.has(token)) {
-    return false;
-  }
-
   if (/^[a-z_][a-z0-9_]*$/u.test(token) && token.length < 6) {
     return false;
   }
@@ -468,13 +459,21 @@ function isKeywordCandidate(token: string) {
     if (token.length < 7) {
       return false;
     }
-
-    if (/(ается|яется|ется|ются|ится|ться|ать|ять|ить)$/u.test(token)) {
-      return false;
-    }
   }
 
   return token.length >= 4 && token.length <= 32;
+}
+
+function scoreKeywordCandidate(token: string, frequency: number) {
+  if (/^[a-z][a-z0-9_-]*$/u.test(token)) {
+    return /[0-9_-]/u.test(token) ? 3 : 2;
+  }
+
+  if (!/^[а-яё]+$/u.test(token)) {
+    return 2;
+  }
+
+  return 0;
 }
 
 function createEvidenceQuote(text: string, keywords: string[]) {
