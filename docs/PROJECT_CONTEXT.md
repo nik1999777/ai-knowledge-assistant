@@ -161,6 +161,9 @@ Retrieval is hybrid:
 - Reciprocal Rank Fusion (RRF).
 - Local rerank with token overlap, title/section overlap, phrase bonus, and short
   chunk penalty.
+- Query token coverage does not use a hand-maintained stop-word list. Verbose
+  questions are handled by capping the overlap denominator, so extra wording in
+  the question does not dilute strong matches indefinitely.
 - Section overlap is treated as scoped metadata: it is strongest when the
   document title also matches the query, so generic section names do not outrank
   the intended document.
@@ -240,8 +243,7 @@ Current stable seed benchmark after grounded partial-answer prompt changes:
 - `fp=0`
 - `fn=0`
 
-Current generated user-KB smoke report after lexical ranking and metadata rerank
-changes:
+Current generated user-KB smoke report after capped query-overlap scoring:
 
 - `answerability_accuracy=1.000`
 - `tp=12`

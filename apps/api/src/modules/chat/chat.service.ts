@@ -30,6 +30,7 @@ const ANSWER_SCORE_THRESHOLD = env.ANSWER_SCORE_THRESHOLD;
 const RRF_K = 60;
 const RETRIEVAL_CANDIDATE_MULTIPLIER = 4;
 const LEXICAL_CHUNKS_PER_DOCUMENT = 3;
+const MAX_QUERY_TOKENS_FOR_COVERAGE = 6;
 const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
 
 type StreamChunkHandler = (chunk: string) => void;
@@ -424,8 +425,9 @@ function tokenOverlapScore(tokens: string[], text: string) {
 
   const normalizedText = text.toLocaleLowerCase();
   const matched = tokens.filter((token) => normalizedText.includes(token)).length;
+  const denominator = Math.min(tokens.length, MAX_QUERY_TOKENS_FOR_COVERAGE);
 
-  return matched / tokens.length;
+  return Math.min(1, matched / denominator);
 }
 
 function calculateDomainEvidence(tokens: string[], sources: RagSource[]) {
