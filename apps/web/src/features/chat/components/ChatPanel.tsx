@@ -11,10 +11,26 @@ type ChatPanelProps = {
   onSubmit: () => void;
 };
 
-const ANSWER_MODES: Array<{ label: string; value: AnswerMode }> = [
-  { label: "Strict", value: "strict" },
-  { label: "Balanced", value: "balanced" },
-  { label: "Tutor", value: "tutor" },
+const ANSWER_MODES: Array<{
+  description: string;
+  label: string;
+  value: AnswerMode;
+}> = [
+  {
+    description: "Только прямой ответ из найденного контекста, иначе отказ.",
+    label: "Strict",
+    value: "strict",
+  },
+  {
+    description: "Честный частичный ответ по документам без внешних знаний.",
+    label: "Balanced",
+    value: "balanced",
+  },
+  {
+    description: "Сначала по документам, затем отдельное общее пояснение.",
+    label: "Tutor",
+    value: "tutor",
+  },
 ];
 
 export function ChatPanel({
@@ -36,15 +52,20 @@ export function ChatPanel({
     <Section>
       <ModeRow aria-label="Режим ответа">
         {ANSWER_MODES.map((mode) => (
-          <ModeButton
-            key={mode.value}
-            type="button"
-            $active={answerMode === mode.value}
-            disabled={loading}
-            onClick={() => onAnswerModeChange(mode.value)}
-          >
-            {mode.label}
-          </ModeButton>
+          <ModeItem key={mode.value}>
+            <ModeButton
+              type="button"
+              $active={answerMode === mode.value}
+              aria-describedby={`answer-mode-${mode.value}`}
+              disabled={loading}
+              onClick={() => onAnswerModeChange(mode.value)}
+            >
+              {mode.label}
+            </ModeButton>
+            <ModeTooltip id={`answer-mode-${mode.value}`} role="tooltip">
+              {mode.description}
+            </ModeTooltip>
+          </ModeItem>
         ))}
       </ModeRow>
 
@@ -89,7 +110,13 @@ const ModeRow = styled.div`
   background: rgba(248, 250, 252, 0.9);
 `;
 
+const ModeItem = styled.div`
+  position: relative;
+  min-width: 0;
+`;
+
 const ModeButton = styled.button<{ $active: boolean }>`
+  width: 100%;
   min-height: 30px;
   border: 0;
   border-radius: 9px;
@@ -105,6 +132,50 @@ const ModeButton = styled.button<{ $active: boolean }>`
   &:disabled {
     cursor: not-allowed;
     opacity: 0.7;
+  }
+`;
+
+const ModeTooltip = styled.span`
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  transform: translateX(-50%) translateY(2px);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.96);
+  color: white;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 140ms ease;
+
+  ${ModeItem}:hover &,
+  ${ModeItem}:focus-within & {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.96);
   }
 `;
 
