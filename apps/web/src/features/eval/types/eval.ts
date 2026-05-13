@@ -26,6 +26,13 @@ export type EvalCaseResult = {
   decision?: "answered" | "declined";
   policyDeclined?: boolean;
   modelDeclined?: boolean;
+  answerMode?: "strict" | "balanced" | "tutor" | null;
+  answerSupport?: {
+    matchedTerms: string[];
+    missingTerms: string[];
+    score: number;
+    status: "fully_supported" | "partially_supported" | "unsupported";
+  } | null;
   promptVersion?: string | null;
   generationOptions?: {
     temperature: number;
@@ -51,6 +58,13 @@ export type EvalCaseResult = {
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;
+  retrievalTrace?: {
+    final: EvalTraceItem[];
+    lexical: EvalTraceItem[];
+    merged: EvalTraceItem[];
+    reranked: EvalTraceItem[];
+    vector: EvalTraceItem[];
+  } | null;
   sources?: Array<{
     docId: string;
     title: string;
@@ -68,6 +82,22 @@ export type EvalCaseResult = {
     endOffset?: number;
     textPreview: string;
   }>;
+};
+
+export type EvalTraceItem = {
+  docId: string;
+  title: string;
+  chunkIndex: number;
+  origin?: "vector" | "lexical" | "hybrid";
+  vectorRank?: number;
+  vectorScore?: number;
+  lexicalRank?: number;
+  lexicalScore?: number;
+  rrfScore?: number;
+  finalScore?: number;
+  score: number;
+  section?: string | null;
+  textPreview: string;
 };
 
 export type EvalReport = {

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { getEvalReport } from "../../features/eval/api/eval";
 import type { EvalReportMode } from "../../features/eval/api/eval";
-import type { EvalCaseResult } from "../../features/eval/types/eval";
+import type { EvalCaseResult, EvalTraceItem } from "../../features/eval/types/eval";
 import { AppHeader } from "../../shared/components/AppHeader";
 import { ErrorCard } from "../../shared/components/ErrorCard";
 import { Layout } from "../../shared/components/Layout";
@@ -221,6 +221,9 @@ export function EvalPage() {
 }
 
 function CaseCard({ result }: { result: EvalCaseResult }) {
+  const [activeTraceStage, setActiveTraceStage] =
+    useState<keyof NonNullable<EvalCaseResult["retrievalTrace"]>>("final");
+
   return (
     <CaseArticle>
       <CaseHeader>
@@ -243,6 +246,8 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
         <span>reason: {result.declineReason ?? "none"}</span>
         <span>policy: {result.policyDeclined ? "declined" : "answered"}</span>
         <span>model: {result.modelDeclined ? "declined" : "answered"}</span>
+        <span>mode: {formatAnswerMode(result.answerMode)}</span>
+        <span>support: {formatAnswerSupport(result.answerSupport)}</span>
         <span>prompt: {result.promptVersion ?? "unknown"}</span>
         <span>generation: {formatGenerationOptions(result.generationOptions)}</span>
         <span>score: {result.bestScore.toFixed(3)}</span>
@@ -252,6 +257,19 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
 
       {result.expectedEvidenceQuote ? (
         <EvidenceQuote>{result.expectedEvidenceQuote}</EvidenceQuote>
+      ) : null}
+
+      {result.answerSupport ? (
+        <SupportGrid>
+          <SupportBlock>
+            <SmallLabel>Matched terms</SmallLabel>
+            <strong>{formatTerms(result.answerSupport.matchedTerms)}</strong>
+          </SupportBlock>
+          <SupportBlock>
+            <SmallLabel>Missing terms</SmallLabel>
+            <strong>{formatTerms(result.answerSupport.missingTerms)}</strong>
+          </SupportBlock>
+        </SupportGrid>
       ) : null}
 
       {result.sources?.length ? (
@@ -276,9 +294,59 @@ function CaseCard({ result }: { result: EvalCaseResult }) {
           ))}
         </SourcesList>
       ) : null}
+
+      {result.retrievalTrace ? (
+        <TracePanel>
+          <TraceHeader>
+            <SmallLabel>Retrieval trace</SmallLabel>
+            <TraceTabs>
+              {TRACE_STAGES.map((stage) => (
+                <TraceTab
+                  key={stage.key}
+                  type="button"
+                  $active={activeTraceStage === stage.key}
+                  onClick={() => setActiveTraceStage(stage.key)}
+                >
+                  {stage.label}
+                </TraceTab>
+              ))}
+            </TraceTabs>
+          </TraceHeader>
+          <TraceList>
+            {result.retrievalTrace[activeTraceStage].slice(0, 5).map((item, index) => (
+              <TraceCard key={`${activeTraceStage}-${item.docId}-${item.chunkIndex}-${index}`}>
+                <SourcePreviewHeader>
+                  <strong>{item.title}</strong>
+                  <span>{formatTraceScore(item)}</span>
+                </SourcePreviewHeader>
+                <SourcePreviewMeta>
+                  chunk {item.chunkIndex}
+                  {item.section ? ` · ${item.section}` : ""} · origin{" "}
+                  {item.origin ?? "unknown"} · vector{" "}
+                  {formatRankScore(item.vectorRank, item.vectorScore)} · lexical{" "}
+                  {formatRankScore(item.lexicalRank, item.lexicalScore)} · RRF{" "}
+                  {formatOptionalNumber(item.rrfScore)}
+                </SourcePreviewMeta>
+                <SourcePreviewText>{item.textPreview}</SourcePreviewText>
+              </TraceCard>
+            ))}
+          </TraceList>
+        </TracePanel>
+      ) : null}
     </CaseArticle>
   );
 }
+
+const TRACE_STAGES: Array<{
+  key: keyof NonNullable<EvalCaseResult["retrievalTrace"]>;
+  label: string;
+}> = [
+  { key: "vector", label: "Vector" },
+  { key: "lexical", label: "Lexical" },
+  { key: "merged", label: "Merged" },
+  { key: "reranked", label: "Rerank" },
+  { key: "final", label: "Final" },
+];
 
 const HeroCard = styled.section`
   background: var(--surface);
@@ -582,6 +650,25 @@ const EvidenceQuote = styled.p`
   line-height: 1.6;
 `;
 
+const SupportGrid = styled.div`
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+
+  @media (min-width: 720px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const SupportBlock = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+`;
+
 const SourcesList = styled.div`
   display: grid;
   gap: 8px;
@@ -622,6 +709,54 @@ const SourcePreviewText = styled.p`
   line-height: 1.6;
 `;
 
+const TracePanel = styled.div`
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+`;
+
+const TraceHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+`;
+
+const TraceTabs = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+`;
+
+const TraceTab = styled.button<{ $active: boolean }>`
+  border: 1px solid ${({ $active }) => ($active ? "var(--accent)" : "var(--border)")};
+  background: ${({ $active }) =>
+    $active ? "rgba(16, 163, 127, 0.1)" : "var(--surface)"};
+  color: ${({ $active }) =>
+    $active ? "var(--accent-strong)" : "var(--text-secondary)"};
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+`;
+
+const TraceList = styled.div`
+  display: grid;
+  gap: 8px;
+`;
+
+const TraceCard = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 9px 10px;
+`;
+
 function formatPercent(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
 }
@@ -654,6 +789,54 @@ function formatGenerationOptions(
   }
 
   return `temp ${options.temperature} / seed ${options.seed}`;
+}
+
+function formatAnswerMode(value?: string | null) {
+  switch (value) {
+    case "strict":
+      return "Strict";
+    case "tutor":
+      return "Tutor";
+    case "balanced":
+      return "Balanced";
+    default:
+      return "unknown";
+  }
+}
+
+function formatAnswerSupport(
+  support?: EvalCaseResult["answerSupport"] | null,
+) {
+  if (!support) {
+    return "—";
+  }
+
+  return `${formatSupportStatus(support.status)} ${support.score.toFixed(3)}`;
+}
+
+function formatSupportStatus(value: string) {
+  switch (value) {
+    case "fully_supported":
+      return "Full";
+    case "partially_supported":
+      return "Partial";
+    case "unsupported":
+      return "Weak";
+    default:
+      return value;
+  }
+}
+
+function formatTerms(terms: string[]) {
+  return terms.length > 0 ? terms.slice(0, 10).join(", ") : "—";
+}
+
+function formatTraceScore(item: EvalTraceItem) {
+  if (typeof item.finalScore === "number") {
+    return `final ${formatOptionalNumber(item.finalScore)}`;
+  }
+
+  return `score ${formatOptionalNumber(item.score)}`;
 }
 
 function getModeCommand(mode: EvalReportMode) {

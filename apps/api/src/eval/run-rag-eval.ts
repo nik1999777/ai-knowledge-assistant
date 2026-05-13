@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { streamChatWithKnowledgeBase } from "../modules/chat/chat.service.js";
+import type { RagDebug } from "../modules/chat/chat.types.js";
 import type { DocumentScope } from "../repositories/documents.repository.js";
 
 type EvalCase = {
@@ -69,6 +70,8 @@ type EvalCaseResult = {
   decision: "answered" | "declined";
   policyDeclined: boolean;
   modelDeclined: boolean;
+  answerMode: RagDebug["answerMode"] | null;
+  answerSupport: RagDebug["answerSupport"] | null;
   promptVersion: string | null;
   generationOptions: {
     temperature: number;
@@ -87,6 +90,7 @@ type EvalCaseResult = {
   answerKeywordHit: boolean | null;
   sourceKeywordHit: boolean | null;
   answerabilityCorrect: boolean;
+  retrievalTrace: RagDebug["retrievalTrace"] | null;
   sources: EvalSourceSnapshot[];
 };
 
@@ -190,6 +194,8 @@ async function evaluateCase(
     decision: meta.debug.decision,
     policyDeclined: decisionDeclined,
     modelDeclined: answerDeclined,
+    answerMode: meta.debug.answerMode ?? null,
+    answerSupport: meta.debug.answerSupport ?? null,
     promptVersion: meta.debug.promptVersion ?? null,
     generationOptions: meta.debug.generationOptions ?? null,
     bestScore: meta.bestScore,
@@ -211,6 +217,7 @@ async function evaluateCase(
         ? sourceKeywordHit
         : null,
     answerabilityCorrect: declined === !testCase.expected.answerable,
+    retrievalTrace: meta.debug.retrievalTrace ?? null,
     sources: allowedSources.map((source) => ({
       docId: source.docId,
       title: source.title,

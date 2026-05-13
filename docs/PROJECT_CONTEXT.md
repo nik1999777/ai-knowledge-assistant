@@ -253,6 +253,10 @@ test. A red generated report is a diagnostic signal for the current uploaded
 KB/retrieval/prompt behavior, not a stable release benchmark. `eval:seed`
 remains the regression benchmark.
 
+Eval case results include `answerMode`, `answerSupport`, and compact
+`retrievalTrace` snapshots, and the `/eval` failed-case cards can inspect the
+same support/trace signals used by chat debug.
+
 Current stable seed benchmark after grounded partial-answer prompt changes:
 
 - `answerability_accuracy=1.000`
@@ -337,16 +341,16 @@ chunks to make grounding easier to inspect.
    - Expand eval cases.
    - Keep categories: `answerable`, `unanswerable`, `tricky`, `exact`,
      `multi-hop`.
-   - Show category summary, failed cases, `bestScore`, `decision`, and
-     `guardrailReason`.
+   - Category summaries, failed cases, `bestScore`, `decision`,
+     `guardrailReason`, answer support, and retrieval trace are visible.
 2. Generated eval for current user documents.
    - Foundation exists through `eval:generate` and `eval:generated`.
    - Next: improve question diversity and add harder generated categories.
    - Later: optionally use an LLM generator with strict JSON validation.
 3. Retrieval Debug panel.
-   - RRF exists, but a dedicated panel should show vector candidates, lexical
-     candidates, merged/hybrid candidates, filtered candidates, raw ranks/scores,
-     and final rerank.
+   - Chat and eval failed-case debug now show vector, lexical, merged, reranked,
+     and final candidates. Next: add filtering/search within trace and compare
+     candidate movement across stages.
 4. Async ingestion and statuses.
    - Move toward `uploaded -> processing -> indexed` or `failed`.
    - API should return `docId` quickly.
