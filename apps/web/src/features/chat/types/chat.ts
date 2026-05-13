@@ -29,6 +29,12 @@ export type Timing = {
 
 export type RagDebug = {
   answerMode?: AnswerMode;
+  answerSupport?: {
+    matchedTerms: string[];
+    missingTerms: string[];
+    score: number;
+    status: "fully_supported" | "partially_supported" | "unsupported";
+  };
   threshold: number;
   declineThreshold?: number;
   answerThreshold?: number;

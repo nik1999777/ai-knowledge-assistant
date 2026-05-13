@@ -32,6 +32,7 @@ const RRF_K = 60;
 const RETRIEVAL_CANDIDATE_MULTIPLIER = 4;
 const LEXICAL_CHUNKS_PER_DOCUMENT = 3;
 const MAX_QUERY_TOKENS_FOR_COVERAGE = 6;
+const MAX_SUPPORT_TERMS = 16;
 const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
 
 type StreamChunkHandler = (chunk: string) => void;
@@ -110,6 +111,7 @@ export async function streamChatWithKnowledgeBase(
   });
 
   answer = normalizeDeclineAnswer(answer);
+  const answerSupport = analyzeAnswerSupport(answer, context.sources);
 
   const llmMs = Number((performance.now() - llmStart).toFixed(2));
   const totalMs = Number((performance.now() - totalStart).toFixed(2));
@@ -128,6 +130,7 @@ export async function streamChatWithKnowledgeBase(
       debug: {
         threshold: context.decisionThreshold,
         answerMode,
+        answerSupport,
         declineThreshold: DECLINE_SCORE_THRESHOLD,
         answerThreshold: ANSWER_SCORE_THRESHOLD,
         promptVersion: RAG_PROMPT_VERSION,
@@ -152,6 +155,42 @@ function normalizeDeclineAnswer(answer: string) {
   }
 
   return answer;
+}
+
+function analyzeAnswerSupport(answer: string, sources: RagSource[]) {
+  const answerTerms = tokenizeForSearch(answer)
+    .filter((token) => /[\p{L}]/u.test(token))
+    .filter((token) => token.length >= 5)
+    .slice(0, MAX_SUPPORT_TERMS);
+
+  if (answerTerms.length === 0 || sources.length === 0) {
+    return {
+      matchedTerms: [],
+      missingTerms: answerTerms,
+      score: 0,
+      status: "unsupported" as const,
+    };
+  }
+
+  const sourceText = sources
+    .map((source) => `${source.title}\n${source.section ?? ""}\n${source.text}`)
+    .join("\n")
+    .toLocaleLowerCase();
+  const matchedTerms = answerTerms.filter((token) => sourceText.includes(token));
+  const missingTerms = answerTerms.filter((token) => !sourceText.includes(token));
+  const score = matchedTerms.length / answerTerms.length;
+
+  return {
+    matchedTerms,
+    missingTerms,
+    score: Number(score.toFixed(3)),
+    status:
+      score >= 0.8
+        ? ("fully_supported" as const)
+        : score >= 0.35
+          ? ("partially_supported" as const)
+          : ("unsupported" as const),
+  };
 }
 
 async function buildRagChatContext(

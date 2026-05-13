@@ -7,6 +7,12 @@ type AnswerSectionProps = {
   data: ChatResponse;
 };
 
+type TextPart = {
+  key: string;
+  highlighted: boolean;
+  text: string;
+};
+
 export function AnswerSection({ data }: AnswerSectionProps) {
   const [showDebug, setShowDebug] = useState(false);
   const [showSources, setShowSources] = useState(false);
@@ -40,6 +46,16 @@ export function AnswerSection({ data }: AnswerSectionProps) {
             <ScoreLabel>Total</ScoreLabel>
             <ScoreValue>{data.timing.totalMs} ms</ScoreValue>
           </MetricPill>
+
+          {data.debug.answerSupport ? (
+            <MetricPill>
+              <ScoreLabel>Support</ScoreLabel>
+              <ScoreValue>
+                {formatSupportStatus(data.debug.answerSupport.status)}{" "}
+                {data.debug.answerSupport.score.toFixed(2)}
+              </ScoreValue>
+            </MetricPill>
+          ) : null}
         </SummaryRow>
       </AnswerBubble>
 
@@ -85,6 +101,15 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                 </CompactItem>
 
                 <CompactItem>
+                  <TimingLabel>Answer support</TimingLabel>
+                  <strong>
+                    {data.debug.answerSupport
+                      ? `${formatSupportStatus(data.debug.answerSupport.status)} ${data.debug.answerSupport.score.toFixed(3)}`
+                      : "—"}
+                  </strong>
+                </CompactItem>
+
+                <CompactItem>
                   <TimingLabel>Vector / Lexical / Merged</TimingLabel>
                   <strong>
                     {data.debug.vectorCount ?? 0} / {data.debug.lexicalCount ?? 0} /{" "}
@@ -117,6 +142,23 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                   <strong>{guardrailReasonLabel}</strong>
                 </CompactItem>
               </CompactGrid>
+
+              {data.debug.answerSupport ? (
+                <SupportTerms>
+                  <TermGroup>
+                    <TimingLabel>Matched terms</TimingLabel>
+                    <TermList>
+                      {formatTerms(data.debug.answerSupport.matchedTerms)}
+                    </TermList>
+                  </TermGroup>
+                  <TermGroup>
+                    <TimingLabel>Missing terms</TimingLabel>
+                    <TermList>
+                      {formatTerms(data.debug.answerSupport.missingTerms)}
+                    </TermList>
+                  </TermGroup>
+                </SupportTerms>
+              ) : null}
 
               <TimingStrip>
                 <TimingPill>
@@ -192,7 +234,12 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                         </ScoreBadge>
                       </SourceHeader>
 
-                      <SourceText>{source.text}</SourceText>
+                      <SourceText>
+                        {renderHighlightedText(
+                          source.text,
+                          data.debug.answerSupport?.matchedTerms ?? [],
+                        )}
+                      </SourceText>
                     </SourceCard>
                   ))}
                 </Sources>
@@ -342,6 +389,32 @@ const TimingStrip = styled.div`
   margin-top: 14px;
 `;
 
+const SupportTerms = styled.div`
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+
+  @media (min-width: 720px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+`;
+
+const TermGroup = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const TermList = styled.span`
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.5;
+`;
+
 const TimingPill = styled.div`
   display: inline-flex;
   align-items: center;
@@ -408,6 +481,13 @@ const SourceText = styled.p`
   color: var(--text-secondary);
 `;
 
+const Highlight = styled.mark`
+  border-radius: 5px;
+  padding: 1px 3px;
+  background: rgba(250, 204, 21, 0.28);
+  color: inherit;
+`;
+
 const NoSources = styled.p`
   margin: 0;
   color: var(--text-muted);
@@ -428,6 +508,84 @@ function formatAnswerMode(value?: string) {
     default:
       return "Balanced";
   }
+}
+
+function formatSupportStatus(value: string) {
+  switch (value) {
+    case "fully_supported":
+      return "Full";
+    case "partially_supported":
+      return "Partial";
+    case "unsupported":
+      return "Weak";
+    default:
+      return value;
+  }
+}
+
+function formatTerms(terms: string[]) {
+  return terms.length > 0 ? terms.slice(0, 8).join(", ") : "—";
+}
+
+function renderHighlightedText(text: string, terms: string[]) {
+  const parts = splitHighlightedText(text, terms);
+
+  return parts.map((part) =>
+    part.highlighted ? (
+      <Highlight key={part.key}>{part.text}</Highlight>
+    ) : (
+      <span key={part.key}>{part.text}</span>
+    ),
+  );
+}
+
+function splitHighlightedText(text: string, terms: string[]): TextPart[] {
+  const uniqueTerms = [...new Set(terms)]
+    .filter((term) => term.length >= 3)
+    .sort((left, right) => right.length - left.length);
+
+  if (uniqueTerms.length === 0) {
+    return [{ highlighted: false, key: "text-0", text }];
+  }
+
+  const pattern = new RegExp(`(${uniqueTerms.map(escapeRegExp).join("|")})`, "giu");
+  const parts: TextPart[] = [];
+  let lastIndex = 0;
+  let partIndex = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    const matchText = match[0];
+    const index = match.index ?? 0;
+
+    if (index > lastIndex) {
+      parts.push({
+        highlighted: false,
+        key: `text-${partIndex++}`,
+        text: text.slice(lastIndex, index),
+      });
+    }
+
+    parts.push({
+      highlighted: true,
+      key: `mark-${partIndex++}`,
+      text: matchText,
+    });
+    lastIndex = index + matchText.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({
+      highlighted: false,
+      key: `text-${partIndex++}`,
+      text: text.slice(lastIndex),
+    });
+  }
+
+  return parts;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function formatSourceSpan(startOffset?: number, endOffset?: number) {

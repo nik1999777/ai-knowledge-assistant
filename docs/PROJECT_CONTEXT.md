@@ -186,6 +186,10 @@ Important source debug fields:
 - `rrfScore`: normalized RRF signal.
 - `finalScore`: score after local rerank.
 - `bestScore`: final score of the top source.
+- `answerSupport`: heuristic answer audit with `status`, `score`,
+  `matchedTerms`, and `missingTerms`. It compares generated answer tokens
+  against retrieved source text and is intended for debugging, not as a formal
+  proof of factuality.
 
 ## Decision Policy
 
@@ -306,6 +310,8 @@ sources, document detail chunks, and eval source snapshots.
 
 Important limitation: this is not answer-level citation extraction yet. The
 assistant still cites retrieved chunks, not individual generated claims.
+The chat UI highlights matched `answerSupport.matchedTerms` inside source
+chunks to make grounding easier to inspect.
 
 ## Known Limitations
 

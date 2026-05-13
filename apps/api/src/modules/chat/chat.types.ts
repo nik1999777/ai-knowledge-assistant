@@ -27,6 +27,12 @@ export type RagTiming = {
 
 export type RagDebug = {
   answerMode?: "strict" | "balanced" | "tutor";
+  answerSupport?: {
+    matchedTerms: string[];
+    missingTerms: string[];
+    score: number;
+    status: "fully_supported" | "partially_supported" | "unsupported";
+  };
   threshold: number;
   declineThreshold?: number;
   answerThreshold?: number;
