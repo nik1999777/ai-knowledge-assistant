@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getLatestEvalReport } from "./eval-report.service.js";
 
 const evalReportQuerySchema = z.object({
-  mode: z.enum(["current", "generated", "seed"]).default("current"),
+  mode: z.enum(["generated", "seed"]).default("seed"),
 });
 
 export async function registerEvalRoutes(app: FastifyInstance) {

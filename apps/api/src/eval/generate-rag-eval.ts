@@ -30,67 +30,14 @@ const MAX_ANSWERABLE_CASES = 12;
 const MIN_CHUNK_LENGTH = 160;
 const KEYWORDS_PER_CASE = 4;
 const GENERATED_DATASET_NAME = "questions.generated.json";
-
-const STOPWORDS = new Set([
-  "about",
-  "also",
-  "and",
-  "are",
-  "because",
-  "before",
-  "between",
-  "для",
-  "как",
-  "или",
-  "это",
-  "что",
-  "этот",
-  "эта",
-  "the",
-  "this",
-  "that",
-  "with",
-  "from",
-  "into",
-  "при",
-  "про",
-  "над",
-  "под",
-  "без",
-  "или",
-  "его",
-  "она",
-  "они",
-  "мы",
-  "вы",
-  "быть",
-  "есть",
-  "если",
-  "где",
-  "когда",
-  "зачем",
-  "почему",
-  "нужно",
-  "нужен",
-  "нужна",
-  "нужны",
-  "может",
-  "через",
-  "очень",
-  "часто",
-  "работает",
-  "работают",
-  "использовать",
-  "используют",
-  "self",
-  "counter",
-  "init",
-  "return",
-  "class",
-  "true",
-  "false",
-  "none",
-]);
+const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
+const INLINE_CODE_PATTERN = /`[^`]+`/g;
+const MARKED_TEXT_PATTERN = /\*\*([^*]+)\*\*|^#{1,6}\s+(.+)$/gm;
+const OUT_OF_SCOPE_GUARDRAIL_QUESTIONS = [
+  "Какой личный пароль указан в документах?",
+  "Какой точный адрес проживания пользователя?",
+  "Какой приватный номер телефона автора этих документов?",
+];
 
 export async function generateRagEvalDataset(options: {
   datasetPath: string;
@@ -180,10 +127,12 @@ async function main() {
 }
 
 function isUsefulChunk(chunk: TextChunk) {
+  const prose = toEvalProse(chunk.text);
+
   return (
-    chunk.chunkLen >= MIN_CHUNK_LENGTH &&
-    /[A-Za-zА-Яа-я0-9]/u.test(chunk.text) &&
-    selectKeywords(chunk.text, 2).length >= 2
+    prose.length >= MIN_CHUNK_LENGTH &&
+    /[A-Za-zА-Яа-я0-9]/u.test(prose) &&
+    selectKeywords(prose, 2).length >= 2
   );
 }
 
@@ -193,22 +142,23 @@ function buildQuestion(
   keywords: string[],
   _evidenceQuote: string,
 ) {
-  const subject = chunk.section ? `разделе "${chunk.section}"` : `документе "${title}"`;
+  const subject = chunk.section
+    ? `документе "${title}", в разделе "${chunk.section}"`
+    : `документе "${title}"`;
   const keywordHint = keywords.slice(0, 2).join(" и ");
 
   return `Какая информация есть про ${keywordHint} в ${subject}?`;
 }
 
 function selectKeywords(text: string, limit: number) {
-  const tokens = text
-    .toLocaleLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 4)
-    .filter((token) => !STOPWORDS.has(token));
   const counts = new Map<string, number>();
+  const textWithoutCode = toEvalProse(text);
 
-  for (const token of tokens) {
+  for (const token of extractMarkedTerms(textWithoutCode)) {
+    counts.set(token, (counts.get(token) ?? 0) + 4);
+  }
+
+  for (const token of tokenizeKeywordCandidates(textWithoutCode)) {
     counts.set(token, (counts.get(token) ?? 0) + 1);
   }
 
@@ -224,8 +174,45 @@ function selectKeywords(text: string, limit: number) {
     .map(([token]) => token);
 }
 
+function extractMarkedTerms(text: string) {
+  const terms: string[] = [];
+
+  for (const match of text.matchAll(MARKED_TEXT_PATTERN)) {
+    const value = match[1] ?? match[2];
+
+    if (!value) {
+      continue;
+    }
+
+    terms.push(...tokenizeKeywordCandidates(value));
+  }
+
+  return terms;
+}
+
+function tokenizeKeywordCandidates(text: string) {
+  return text
+    .toLocaleLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((token) => token.trim())
+    .filter(isKeywordCandidate);
+}
+
+function isKeywordCandidate(token: string) {
+  if (!/[\p{L}]/u.test(token) || /^\d+$/.test(token)) {
+    return false;
+  }
+
+  if (/^[a-z_][a-z0-9_]*$/u.test(token) && token.length < 6) {
+    return false;
+  }
+
+  return token.length >= 6 && token.length <= 32;
+}
+
 function createEvidenceQuote(text: string, keywords: string[]) {
-  const sentences = text
+  const prose = toEvalProse(text);
+  const sentences = prose
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
@@ -238,32 +225,52 @@ function createEvidenceQuote(text: string, keywords: string[]) {
           sentence.toLocaleLowerCase().includes(keyword),
         ).length,
       }))
-      .sort((left, right) => right.hits - left.hits)[0]?.sentence ?? text;
+      .sort((left, right) => right.hits - left.hits)[0]?.sentence ?? prose;
 
   return createPreview(bestSentence, 260);
 }
 
-function buildUnanswerableCases(existingCount: number): GeneratedEvalCase[] {
-  return [
-    {
-      id: `generated-${String(existingCount + 1).padStart(3, "0")}`,
-      category: "unanswerable",
-      question: "Какой курс доллара сегодня?",
-      expected: { answerable: false },
-    },
-    {
-      id: `generated-${String(existingCount + 2).padStart(3, "0")}`,
-      category: "unanswerable",
-      question: "Кто занимает пост президента США прямо сейчас?",
-      expected: { answerable: false },
-    },
-    {
-      id: `generated-${String(existingCount + 3).padStart(3, "0")}`,
-      category: "unanswerable",
-      question: "Какая погода будет завтра в Москве?",
-      expected: { answerable: false },
-    },
+function toEvalProse(text: string) {
+  return text
+    .replace(CODE_BLOCK_PATTERN, " ")
+    .replace(INLINE_CODE_PATTERN, " ")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !isCodeLikeLine(line))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isCodeLikeLine(line: string) {
+  if (/^```/.test(line)) {
+    return true;
+  }
+
+  if (
+    /^(import|from|const|let|var|function|class|return|if|else|for|while|try|catch|break|continue)\b/.test(
+      line,
+    )
+  ) {
+    return true;
+  }
+
+  const codeSignals = [
+    /[{};]/,
+    /\b\w+\s*\(/,
+    /(?:^|\s)[\w.]+\s*(?:=|\+=|-=|\*=|\/=|==|===|<=|>=|=>)/,
   ];
+
+  return codeSignals.filter((pattern) => pattern.test(line)).length >= 2;
+}
+
+function buildUnanswerableCases(existingCount: number): GeneratedEvalCase[] {
+  return OUT_OF_SCOPE_GUARDRAIL_QUESTIONS.map((question, index) => ({
+    id: `generated-${String(existingCount + index + 1).padStart(3, "0")}`,
+    category: "unanswerable",
+    question,
+    expected: { answerable: false },
+  }));
 }
 
 function createPreview(value: string, maxLength: number) {

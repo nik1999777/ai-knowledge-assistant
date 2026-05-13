@@ -443,7 +443,7 @@ export const API_ROUTES = [
   ["POST /chat/stream", "SSE chat flow: retrieval, decision, generation, meta.", "chat.controller -> chat.service"],
   ["GET /chat/sessions", "Список chat sessions.", "chat-history.service"],
   ["GET /chat/sessions/:id", "История session с сохраненными sources/debug.", "chat.repository"],
-  ["GET /eval/report", "Последний eval report: seed или current.", "eval-report.controller"],
+  ["GET /eval/report", "Последний eval report: seed или generated.", "eval-report.controller"],
   ["GET /ready", "Проверка Postgres, Qdrant и Ollama.", "readiness.service"],
 ];
 
@@ -467,10 +467,8 @@ export const STORAGE_ITEMS = [
 
 export const EVAL_FACTS = [
   ["eval:seed", "Переиндексирует стабильные seed docs в `documentScope=eval` и гоняет `questions.seed.json`."],
-  ["eval:current", "Legacy/static dataset: гоняет `questions.json` по user KB, полезен только если файл вручную соответствует загруженным документам."],
   ["eval:generate", "Создает `questions.generated.json` из текущих user chunks: question, keywords, evidence quote и spans."],
   ["eval:generated", "Основной smoke-test для текущей user KB: регенерирует generated dataset и пишет `last-generated-report.json`."],
-  ["eval:rag", "Alias для `eval:current`, оставлен для совместимости."],
   ["answerability_accuracy", "Главная метрика: правильно ли система ответила или отказалась."],
   ["tp/tn/fp/fn", "Confusion matrix по answerability: особенно важны FP, потому что это риск hallucination."],
   ["policyDeclined/modelDeclined", "Разделяет отказ policy и отказ самой модели после генерации."],
@@ -611,7 +609,7 @@ export const GLOSSARY: GlossaryItem[] = [
     term: "Eval",
     short: "Набор проверочных вопросов и отчет о качестве.",
     projectMeaning:
-      "`eval:seed` проверяет стабильный benchmark, `eval:current` гоняет статический user dataset, а `eval:generated` строит кейсы из текущих user chunks.",
+      "`eval:seed` проверяет стабильный benchmark, а `eval:generated` строит smoke-test из текущих user chunks.",
     example:
       "`fp=0` значит система не ответила там, где должна была отказаться.",
   },
@@ -772,7 +770,7 @@ export const FAILURE_PLAYBOOK: FailureRecord[] = [
     likelyCause: "Документ не попал в Qdrant, scope не совпал, или Postgres/Qdrant рассинхронизированы.",
     uiCheck: "Открыть /documents и страницу документа; проверить chunk count и текст.",
     codeCheck: "Проверить `document-ingest.service.ts`, `qdrant.client.ts`, `documents.repository.ts`.",
-    command: "cd apps/api && npm run eval:current",
+    command: "cd apps/api && npm run eval:generated",
   },
   {
     symptom: "Чат отвечает `Я не знаю` на очевидный вопрос",
@@ -856,7 +854,6 @@ export const KNOWN_LIMITATIONS = [
   "Нет ingestion statuses/retry queue.",
   "Есть chunk-level source spans, но нет citations внутри сгенерированного ответа.",
   "Generated eval foundation детерминированный/extractive: он пока не использует LLM для разнообразных вопросов.",
-  "`eval:current` остается статическим user dataset и не заменяет generated eval.",
   "Chunking простой, без сложной semantic segmentation.",
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
@@ -865,7 +862,7 @@ export const KNOWN_LIMITATIONS = [
 
 export const ROADMAP_ITEMS = [
   ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`), summary по категориям, failed cases, bestScore, decision и guardrailReason."],
-  ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят extractive dataset из текущих chunks. Следующий шаг: разнообразить категории, улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
+  ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят extractive dataset из текущих chunks. Красный generated report считается диагностикой текущей user KB/retrieval/prompt, а не стабильным release benchmark. Следующий шаг: разнообразить категории, улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
   ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
   ["5. Citations/source spans", "Chunk-level section, chunkIndex, startOffset/endOffset уже есть. Следующий шаг: answer-level citations, page number для PDF и привязка claims к конкретному evidence месту."],

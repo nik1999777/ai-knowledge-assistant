@@ -200,21 +200,16 @@ Commands:
 ```bash
 cd apps/api
 npm run eval:seed
-npm run eval:current
 npm run eval:generate
 npm run eval:generated
 ```
 
 - `eval:seed`: reindexes stable seed docs into `documentScope=eval`, runs
   `questions.seed.json`, and writes `last-seed-report.json`.
-- `eval:current`: legacy/static user-scope dataset. It runs `questions.json`
-  against the current user document base, but is only useful when that static
-  file matches the uploaded user KB.
 - `eval:generate`: builds `questions.generated.json` from current user
   document chunks.
 - `eval:generated`: regenerates `questions.generated.json`, runs those cases
   against `documentScope=user`, and writes `last-generated-report.json`.
-- `eval:rag`: alias for `eval:current`.
 
 Generated eval foundation is deterministic/extractive: it selects useful chunks,
 builds answerable questions from chunk keywords, stores expected answer/source
@@ -222,8 +217,9 @@ keywords, evidence quotes, and chunk spans, then adds a few stable unanswerable
 cases. It does not use an LLM to author questions yet.
 
 For arbitrary uploaded documents, `eval:generated` is the primary user-KB smoke
-test. `eval:seed` remains the regression benchmark. `eval:current` is retained
-for compatibility with manually curated `questions.json`.
+test. A red generated report is a diagnostic signal for the current uploaded
+KB/retrieval/prompt behavior, not a stable release benchmark. `eval:seed`
+remains the regression benchmark.
 
 Current stable seed benchmark after RRF/scope changes:
 

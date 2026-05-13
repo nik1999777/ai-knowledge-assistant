@@ -4,11 +4,9 @@
 
 ## Файлы
 
-- `questions.json`: набор eval-кейсов для текущей пользовательской базы знаний
 - `questions.seed.json`: стабильный benchmark-набор для seed-документов
 - `questions.generated.json`: локально сгенерированный набор из текущих user-документов
 - `seed-docs/`: фиксированные документы, которые используются для воспроизводимого benchmark
-- `last-report.json`: отчет последнего прогона `eval:rag`
 - `last-seed-report.json`: отчет последнего прогона `eval:seed`
 - `last-generated-report.json`: отчет последнего прогона `eval:generated`
 
@@ -16,17 +14,6 @@
 они могут содержать фрагменты пользовательских документов.
 
 ## Режимы eval
-
-### `eval:current`
-
-```bash
-cd apps/api
-npm run eval:current
-```
-
-Прогоняет `questions.json` против текущей базы знаний. Этот режим полезен для ручной проверки конкретных загруженных документов, но метрики будут честными только если вопросы соответствуют этим документам.
-
-`npm run eval:rag` оставлен как alias для `eval:current`.
 
 ### `eval:seed`
 

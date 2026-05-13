@@ -2,15 +2,14 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAppError } from "../../utils/app-error.js";
 
-type EvalReportMode = "current" | "generated" | "seed";
+type EvalReportMode = "generated" | "seed";
 
 const REPORT_FILES: Record<EvalReportMode, string> = {
-  current: "last-report.json",
   generated: "last-generated-report.json",
   seed: "last-seed-report.json",
 };
 
-export async function getLatestEvalReport(mode: EvalReportMode = "current") {
+export async function getLatestEvalReport(mode: EvalReportMode = "seed") {
   const reportPath = await resolveReportPath(REPORT_FILES[mode]);
 
   try {
@@ -34,8 +33,6 @@ function getMissingReportMessage(mode: EvalReportMode) {
       return "Seed eval report не найден. Запустите npm run eval:seed из apps/api";
     case "generated":
       return "Generated eval report не найден. Запустите npm run eval:generated из apps/api";
-    case "current":
-      return "Eval report не найден. Запустите npm run eval:rag из apps/api";
   }
 }
 

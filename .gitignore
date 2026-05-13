@@ -19,7 +19,6 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Generated eval reports
-test-data/rag-eval/last-report.json
 test-data/rag-eval/last-seed-report.json
 test-data/rag-eval/last-generated-report.json
 test-data/rag-eval/questions.generated.json

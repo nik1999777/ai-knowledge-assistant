@@ -2,9 +2,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { streamChatWithKnowledgeBase } from "../modules/chat/chat.service.js";
 import type { DocumentScope } from "../repositories/documents.repository.js";
-import { initCollection } from "../clients/qdrant.client.js";
-import { initPostgres } from "../db/postgres.client.js";
-import { runMigrations } from "../db/migrator.js";
 
 type EvalCase = {
   id: string;
@@ -100,31 +97,11 @@ const DECLINE_ANSWER_VARIANTS = [
   "Не знаю на основе предоставленных данных.",
 ];
 
-async function main() {
-  const datasetPath = path.resolve(
-    process.cwd(),
-    "../..",
-    "test-data/rag-eval/questions.json",
-  );
-  const reportDir = path.resolve(process.cwd(), "../..", "test-data/rag-eval");
-  const reportPath = path.join(reportDir, "last-report.json");
-
-  await initPostgres();
-  await runMigrations();
-  await initCollection();
-
-  await runRagEval({
-    datasetPath,
-    reportPath,
-    label: "eval",
-  });
-}
-
 export async function runRagEval(options: RunRagEvalOptions) {
   const dataset = await loadDataset(options.datasetPath);
 
   if (dataset.length === 0) {
-    throw new Error("Eval dataset пустой: добавьте вопросы в questions.json");
+    throw new Error("Eval dataset пустой: добавьте вопросы в dataset file");
   }
 
   console.log(`[${options.label ?? "eval"}] started, cases=${dataset.length}`);
@@ -498,7 +475,7 @@ async function loadDataset(datasetPath: string): Promise<EvalCase[]> {
   const parsed = JSON.parse(raw) as EvalCase[];
 
   if (!Array.isArray(parsed)) {
-    throw new Error("questions.json должен содержать массив кейсов");
+    throw new Error("Eval dataset должен содержать массив кейсов");
   }
 
   return parsed;
@@ -563,11 +540,4 @@ function inferCategory(testCase: EvalCase): EvalCategory {
   }
 
   return "answerable";
-}
-
-if (process.argv[1]?.endsWith("run-rag-eval.ts")) {
-  main().catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
 }
