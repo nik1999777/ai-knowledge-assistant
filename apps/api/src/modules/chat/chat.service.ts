@@ -14,6 +14,7 @@ import {
 import {
   RAG_PROMPT_VERSION,
   buildRagPrompt,
+  type RagAnswerMode,
 } from "../../services/prompt.service.js";
 import { measureTime } from "../../utils/timing.js";
 import { tokenizeForSearch } from "../../utils/tokenization.js";
@@ -60,6 +61,7 @@ export async function streamChatWithKnowledgeBase(
   const context = await buildRagChatContext(input, {
     documentScope: options.documentScope ?? "user",
   });
+  const answerMode: RagAnswerMode = input.answerMode ?? "balanced";
 
   if (context.shouldDecline) {
     const answer = DECLINE_ANSWER;
@@ -80,6 +82,7 @@ export async function streamChatWithKnowledgeBase(
         },
         debug: {
           threshold: context.decisionThreshold,
+          answerMode,
           declineThreshold: DECLINE_SCORE_THRESHOLD,
           answerThreshold: ANSWER_SCORE_THRESHOLD,
           promptVersion: RAG_PROMPT_VERSION,
@@ -97,7 +100,7 @@ export async function streamChatWithKnowledgeBase(
     };
   }
 
-  const prompt = buildRagPrompt(input.question, context.contextChunks);
+  const prompt = buildRagPrompt(input.question, context.contextChunks, answerMode);
   const llmStart = performance.now();
   let answer = "";
 
@@ -124,6 +127,7 @@ export async function streamChatWithKnowledgeBase(
       },
       debug: {
         threshold: context.decisionThreshold,
+        answerMode,
         declineThreshold: DECLINE_SCORE_THRESHOLD,
         answerThreshold: ANSWER_SCORE_THRESHOLD,
         promptVersion: RAG_PROMPT_VERSION,

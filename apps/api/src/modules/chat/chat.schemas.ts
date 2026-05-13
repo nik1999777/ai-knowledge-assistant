@@ -3,6 +3,7 @@ import { z } from "zod";
 export const chatSchema = z.object({
   question: z.string().min(1, "question обязателен"),
   sessionId: z.string().uuid().optional(),
+  answerMode: z.enum(["strict", "balanced", "tutor"]).default("balanced"),
 });
 
 export const chatSessionParamsSchema = z.object({

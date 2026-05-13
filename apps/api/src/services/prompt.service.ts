@@ -1,12 +1,16 @@
 export const RAG_PROMPT_VERSION = "rag-grounded-v5";
 
+export type RagAnswerMode = "strict" | "balanced" | "tutor";
+
 export function buildRagPrompt(
   question: string,
   contextChunks: string[],
+  answerMode: RagAnswerMode = "balanced",
 ): string {
   const context = contextChunks
     .map((chunk, index) => `Фрагмент ${index + 1}:\n${chunk}`)
     .join("\n\n");
+  const modePolicy = buildAnswerModePolicy(answerMode);
 
   return `
 Ты — RAG-ассистент, который отвечает строго и только на основе предоставленного контекста.
@@ -24,10 +28,37 @@ export function buildRagPrompt(
 10. Отвечай на русском языке.
 11. Дай короткий и прямой ответ: 1–4 предложения или короткий список, если в контексте список.
 
+Режим ответа:
+${modePolicy}
+
 Контекст:
 ${context}
 
 Вопрос:
 ${question}
 `;
+}
+
+function buildAnswerModePolicy(answerMode: RagAnswerMode) {
+  switch (answerMode) {
+    case "strict":
+      return [
+        "- Strict: отвечай только когда контекст явно содержит прямой ответ.",
+        "- Если контекст содержит только косвенные упоминания, выведи ровно фразу отказа.",
+        "- Не добавляй обучающих пояснений и общих знаний.",
+      ].join("\n");
+    case "tutor":
+      return [
+        "- Tutor: сначала дай блок \"По документам:\" и кратко изложи только найденные факты.",
+        "- Если контекст частичный, явно напиши, чего в найденных фрагментах нет.",
+        "- Затем можешь добавить блок \"Общее пояснение:\" с общеизвестным пояснением, явно отделенным от документов.",
+        "- Если найденный контекст вообще не связан с вопросом, откажись без блока общего пояснения.",
+      ].join("\n");
+    case "balanced":
+      return [
+        "- Balanced: используй grounded partial answer.",
+        "- Если контекст частичный, честно скажи, что именно найдено и что явно не определено.",
+        "- Не добавляй блок общего пояснения и не используй внешние знания.",
+      ].join("\n");
+  }
 }

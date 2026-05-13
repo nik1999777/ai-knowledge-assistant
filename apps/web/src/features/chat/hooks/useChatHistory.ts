@@ -8,11 +8,12 @@ import {
   getChatSessions,
   streamQuestion,
 } from "../api/chat";
-import type { ChatExchange } from "../types/chat";
+import type { AnswerMode, ChatExchange } from "../types/chat";
 
 export function useChatHistory() {
   const PAGE_SIZE = 5;
   const [question, setQuestion] = useState("");
+  const [answerMode, setAnswerMode] = useState<AnswerMode>("balanced");
   const [history, setHistory] = useState<ChatExchange[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -160,6 +161,7 @@ export function useChatHistory() {
       let answer = "";
 
       const meta = await streamQuestion(questionValue, {
+        answerMode,
         sessionId: activeSessionId,
         onChunk: (chunk) => {
           answer += chunk;
@@ -339,6 +341,7 @@ export function useChatHistory() {
     sessionsLoading: sessionsQuery.isLoading,
     pagination,
     question,
+    answerMode,
     history,
     loading,
     loadingHistory,
@@ -347,6 +350,7 @@ export function useChatHistory() {
     deletingSession: deleteSessionMutation.isPending,
     error,
     setQuestion,
+    setAnswerMode,
     setActiveSessionId,
     handleAsk,
     handleLoadOlder,

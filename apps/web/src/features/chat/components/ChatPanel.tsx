@@ -1,16 +1,27 @@
 import type { KeyboardEvent } from "react";
 import styled from "styled-components";
+import type { AnswerMode } from "../types/chat";
 
 type ChatPanelProps = {
+  answerMode: AnswerMode;
   question: string;
   loading: boolean;
+  onAnswerModeChange: (value: AnswerMode) => void;
   onQuestionChange: (value: string) => void;
   onSubmit: () => void;
 };
 
+const ANSWER_MODES: Array<{ label: string; value: AnswerMode }> = [
+  { label: "Strict", value: "strict" },
+  { label: "Balanced", value: "balanced" },
+  { label: "Tutor", value: "tutor" },
+];
+
 export function ChatPanel({
+  answerMode,
   question,
   loading,
+  onAnswerModeChange,
   onQuestionChange,
   onSubmit,
 }: ChatPanelProps) {
@@ -23,6 +34,20 @@ export function ChatPanel({
 
   return (
     <Section>
+      <ModeRow aria-label="Режим ответа">
+        {ANSWER_MODES.map((mode) => (
+          <ModeButton
+            key={mode.value}
+            type="button"
+            $active={answerMode === mode.value}
+            disabled={loading}
+            onClick={() => onAnswerModeChange(mode.value)}
+          >
+            {mode.label}
+          </ModeButton>
+        ))}
+      </ModeRow>
+
       <ComposerRow>
         <Textarea
           value={question}
@@ -50,6 +75,37 @@ const Section = styled.section`
   border-radius: 18px;
   padding: 10px 12px;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+`;
+
+const ModeRow = styled.div`
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  width: min(360px, 100%);
+  padding: 3px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+`;
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  min-height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: ${({ $active }) => ($active ? "var(--surface)" : "transparent")};
+  color: ${({ $active }) =>
+    $active ? "var(--text-primary)" : "var(--text-secondary)"};
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: ${({ $active }) =>
+    $active ? "0 1px 5px rgba(15, 23, 42, 0.08)" : "none"};
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
 `;
 
 const ComposerRow = styled.div`

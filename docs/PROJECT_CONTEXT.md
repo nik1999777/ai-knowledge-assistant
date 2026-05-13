@@ -54,6 +54,7 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
 ## Main Pages
 
 - `/` or chat page: ask questions against uploaded user documents.
+  The composer includes answer modes: `Strict`, `Balanced`, and `Tutor`.
 - `/documents`: list, upload, search, and delete user documents.
 - `/documents/:docId`: inspect document details and chunks.
 - `/architecture`: interactive architecture guide.
@@ -89,7 +90,7 @@ as `20.10.0` can fail with `crypto.hash is not a function`.
    chunk text, then streams generation through SSE.
 10. If the model emits the decline phrase with extra text around it, backend
     normalizes the saved answer to the exact decline contract.
-11. Answer, sources, timing, and debug are saved to chat history.
+11. Answer, sources, timing, answer mode, and debug are saved to chat history.
 
 ## Prompt Versioning
 
@@ -107,9 +108,18 @@ mentions a term but does not explicitly define it, the assistant should say the
 term is not explicitly defined in the found fragments and summarize only the
 available mentions instead of adding a definition from general model knowledge.
 
-Each chat response stores `debug.promptVersion`. Eval results also record the
-prompt version so quality reports can be tied to the prompt behavior that
-produced them.
+Chat requests support `answerMode`:
+
+- `strict`: answer only when context explicitly contains a direct answer;
+  otherwise decline.
+- `balanced`: default grounded partial-answer mode. Summarize what is present,
+  state what is missing, and do not use external knowledge.
+- `tutor`: first answer from documents, then optionally add a clearly separated
+  general explanation when retrieved context is related but partial.
+
+Each chat response stores `debug.promptVersion` and `debug.answerMode`. Eval
+results also record the prompt version so quality reports can be tied to the
+prompt behavior that produced them. Current eval runs use `balanced`.
 
 ## Generation Options
 

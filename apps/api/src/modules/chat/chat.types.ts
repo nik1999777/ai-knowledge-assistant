@@ -26,6 +26,7 @@ export type RagTiming = {
 };
 
 export type RagDebug = {
+  answerMode?: "strict" | "balanced" | "tutor";
   threshold: number;
   declineThreshold?: number;
   answerThreshold?: number;

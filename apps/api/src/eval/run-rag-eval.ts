@@ -141,6 +141,7 @@ async function evaluateCase(
 
   const { answer: finalAnswer, meta } = await streamChatWithKnowledgeBase(
     {
+      answerMode: "balanced",
       question: testCase.question,
     },
     (chunk) => {

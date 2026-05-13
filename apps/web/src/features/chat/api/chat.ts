@@ -4,6 +4,7 @@ import type {
   ChatSessionSummary,
   ChatSessionsResponse,
   ChatStreamMeta,
+  type AnswerMode,
 } from "../types/chat";
 
 type StreamQuestionHandlers = {
@@ -13,9 +14,10 @@ type StreamQuestionHandlers = {
 export async function streamQuestion(
   question: string,
   {
+    answerMode,
     onChunk,
     sessionId,
-  }: StreamQuestionHandlers & { sessionId?: string },
+  }: StreamQuestionHandlers & { answerMode: AnswerMode; sessionId?: string },
 ): Promise<ChatStreamMeta> {
   const res = await fetch(`${API_BASE_URL}/chat/stream`, {
     method: "POST",
@@ -23,7 +25,7 @@ export async function streamQuestion(
       "Content-Type": "application/json",
       Accept: "text/event-stream",
     },
-    body: JSON.stringify({ question, sessionId }),
+    body: JSON.stringify({ answerMode, question, sessionId }),
   });
 
   if (!res.ok) {

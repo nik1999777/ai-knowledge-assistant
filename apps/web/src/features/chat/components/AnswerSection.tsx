@@ -65,6 +65,11 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                 </CompactItem>
 
                 <CompactItem>
+                  <TimingLabel>Answer mode</TimingLabel>
+                  <strong>{formatAnswerMode(data.debug.answerMode)}</strong>
+                </CompactItem>
+
+                <CompactItem>
                   <TimingLabel>Answer threshold</TimingLabel>
                   <strong>{data.debug.threshold.toFixed(3)}</strong>
                 </CompactItem>
@@ -410,6 +415,19 @@ const NoSources = styled.p`
 
 function formatNumber(value?: number) {
   return typeof value === "number" ? value.toFixed(3) : "—";
+}
+
+function formatAnswerMode(value?: string) {
+  switch (value) {
+    case "strict":
+      return "Strict";
+    case "tutor":
+      return "Tutor";
+    case "balanced":
+      return "Balanced";
+    default:
+      return "Balanced";
+  }
 }
 
 function formatSourceSpan(startOffset?: number, endOffset?: number) {

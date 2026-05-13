@@ -135,8 +135,10 @@ export function HomePage() {
 
               <ComposerDock>
                 <ChatPanel
+                  answerMode={chat.answerMode}
                   question={chat.question}
                   loading={chat.loading}
+                  onAnswerModeChange={chat.setAnswerMode}
                   onQuestionChange={chat.setQuestion}
                   onSubmit={chat.handleAsk}
                 />

@@ -1,3 +1,5 @@
+export type AnswerMode = "strict" | "balanced" | "tutor";
+
 export type Source = {
   docId: string;
   title: string;
@@ -26,6 +28,7 @@ export type Timing = {
 };
 
 export type RagDebug = {
+  answerMode?: AnswerMode;
   threshold: number;
   declineThreshold?: number;
   answerThreshold?: number;
