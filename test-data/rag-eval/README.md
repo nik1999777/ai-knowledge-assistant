@@ -40,6 +40,15 @@ npm run eval:generate
 сохраняет evidence quote и chunk spans, затем добавляет несколько unanswerable
 guardrail-кейсов.
 
+Generated eval v2 добавляет category-aware кейсы:
+
+- `answerable`: обычный extractive вопрос по chunk-у
+- `definition`: вопрос на явное определение термина
+- `mentioned-not-defined`: термин найден, но явного определения нет
+- `partial`: вопрос просит больше, чем есть в найденном фрагменте
+- `multi-chunk`: вопрос связывает ключевые слова из двух chunk-ов документа
+- `tutor-broad`: широкий объясняющий вопрос для проверки поведения tutor-style формулировок
+
 ### `eval:generated`
 
 ```bash

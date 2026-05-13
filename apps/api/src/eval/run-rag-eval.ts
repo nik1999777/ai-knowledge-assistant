@@ -31,9 +31,14 @@ type GeneratedEvalMetadata = {
 type EvalCategory =
   | "answerable"
   | "broad"
+  | "definition"
   | "exact"
+  | "mentioned-not-defined"
   | "multi-hop"
+  | "multi-chunk"
+  | "partial"
   | "tricky"
+  | "tutor-broad"
   | "unanswerable";
 
 type EvalSourceSnapshot = {

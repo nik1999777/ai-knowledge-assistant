@@ -854,7 +854,7 @@ export const KNOWN_LIMITATIONS = [
   "Ingestion синхронный: большие документы могут долго держать request.",
   "Нет ingestion statuses/retry queue.",
   "Есть chunk-level source spans, но нет citations внутри сгенерированного ответа.",
-  "Generated eval foundation детерминированный/extractive: он пока не использует LLM для разнообразных вопросов.",
+  "Generated eval v2 детерминированный/extractive и уже добавляет harder categories, но пока не использует LLM для разнообразных вопросов.",
   "Chunking простой, без сложной semantic segmentation.",
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
@@ -863,7 +863,7 @@ export const KNOWN_LIMITATIONS = [
 
 export const ROADMAP_ITEMS = [
   ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Mode Matrix уже сравнивает `strict`, `balanced` и `tutor` на seed benchmark; дальше нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`) и coverage сложных вопросов."],
-  ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят extractive dataset из текущих chunks. Красный generated report считается диагностикой текущей user KB/retrieval/prompt, а не стабильным release benchmark. Следующий шаг: разнообразить категории, улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
+  ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят category-aware extractive dataset из текущих chunks: `definition`, `mentioned-not-defined`, `partial`, `multi-chunk`, `tutor-broad`. Красный generated report считается диагностикой текущей user KB/retrieval/prompt, а не стабильным release benchmark. Следующий шаг: улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
   ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
   ["5. Citations/source spans", "Chunk-level section, chunkIndex, startOffset/endOffset уже есть. Следующий шаг: answer-level citations, page number для PDF и привязка claims к конкретному evidence месту."],

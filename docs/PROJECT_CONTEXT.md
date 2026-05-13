@@ -250,7 +250,10 @@ npm run eval:modes
 Generated eval foundation is deterministic/extractive: it selects useful chunks,
 builds answerable questions from chunk keywords, stores expected answer/source
 keywords, evidence quotes, and chunk spans, then adds a few stable unanswerable
-cases. It does not use an LLM to author questions yet.
+cases. It also creates category-aware generated cases for definitions,
+mentioned-but-not-defined terms, partial questions, multi-chunk questions, and
+tutor-style broad explanation questions. It does not use an LLM to author
+questions yet.
 
 For arbitrary uploaded documents, `eval:generated` is the primary user-KB smoke
 test. A red generated report is a diagnostic signal for the current uploaded
@@ -355,7 +358,10 @@ chunks to make grounding easier to inspect.
      `guardrailReason`, answer support, and retrieval trace are visible.
 2. Generated eval for current user documents.
    - Foundation exists through `eval:generate` and `eval:generated`.
-   - Next: improve question diversity and add harder generated categories.
+   - Generated eval v2 now includes harder categories: `definition`,
+     `mentioned-not-defined`, `partial`, `multi-chunk`, and `tutor-broad`.
+   - Next: improve question wording diversity and optionally add an
+     LLM-generator with strict JSON validation.
    - Later: optionally use an LLM generator with strict JSON validation.
 3. Retrieval Debug panel.
    - Chat and eval failed-case debug now show vector, lexical, merged, reranked,

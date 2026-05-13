@@ -2,12 +2,24 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runMigrations } from "../db/migrator.js";
 import { initPostgres } from "../db/postgres.client.js";
-import { listDocumentsForEval } from "../repositories/documents.repository.js";
+import {
+  listDocumentsForEval,
+  type EvalDocument,
+} from "../repositories/documents.repository.js";
 import { chunkDocument, type TextChunk } from "../services/chunk.service.js";
+
+type GeneratedEvalCategory =
+  | "answerable"
+  | "definition"
+  | "mentioned-not-defined"
+  | "multi-chunk"
+  | "partial"
+  | "tutor-broad"
+  | "unanswerable";
 
 type GeneratedEvalCase = {
   id: string;
-  category: "answerable" | "unanswerable";
+  category: GeneratedEvalCategory;
   question: string;
   expected: {
     answerable: boolean;
@@ -27,12 +39,35 @@ type GeneratedEvalCase = {
 
 const MAX_DOCS = 8;
 const MAX_ANSWERABLE_CASES = 12;
+const MAX_CHUNKS_PER_DOC = 3;
 const MIN_CHUNK_LENGTH = 160;
 const KEYWORDS_PER_CASE = 4;
 const GENERATED_DATASET_NAME = "questions.generated.json";
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 const INLINE_CODE_PATTERN = /`[^`]+`/g;
 const MARKED_TEXT_PATTERN = /\*\*([^*]+)\*\*|^#{1,6}\s+(.+)$/gm;
+const GENERIC_NON_TERMS = new Set([
+  "больше",
+  "важно",
+  "вместе",
+  "должен",
+  "должна",
+  "должно",
+  "когда",
+  "которые",
+  "который",
+  "которая",
+  "лучше",
+  "можно",
+  "нужно",
+  "обычно",
+  "однако",
+  "поэтому",
+  "пример",
+  "раздел",
+  "сильно",
+  "только",
+]);
 const OUT_OF_SCOPE_GUARDRAIL_QUESTIONS = [
   "Какой личный пароль указан в документах?",
   "Какой точный адрес проживания пользователя?",
@@ -44,10 +79,11 @@ export async function generateRagEvalDataset(options: {
   maxAnswerableCases?: number;
 }) {
   const documents = await listDocumentsForEval("user");
-  const cases: GeneratedEvalCase[] = [];
+  const candidateCases: Array<Omit<GeneratedEvalCase, "id">> = [];
+  const maxAnswerableCases = options.maxAnswerableCases ?? MAX_ANSWERABLE_CASES;
 
   for (const document of documents.slice(0, MAX_DOCS)) {
-    if (cases.length >= (options.maxAnswerableCases ?? MAX_ANSWERABLE_CASES)) {
+    if (candidateCases.length >= maxAnswerableCases * 2) {
       break;
     }
 
@@ -55,11 +91,7 @@ export async function generateRagEvalDataset(options: {
       .filter(isUsefulChunk)
       .sort((left, right) => right.chunkLen - left.chunkLen);
 
-    for (const chunk of chunks.slice(0, 2)) {
-      if (cases.length >= (options.maxAnswerableCases ?? MAX_ANSWERABLE_CASES)) {
-        break;
-      }
-
+    for (const chunk of chunks.slice(0, MAX_CHUNKS_PER_DOC)) {
       const chunkKeywords = selectKeywords(chunk.text, KEYWORDS_PER_CASE);
 
       if (chunkKeywords.length < 2) {
@@ -70,29 +102,21 @@ export async function generateRagEvalDataset(options: {
       const evidenceKeywords = selectKeywords(evidenceQuote, KEYWORDS_PER_CASE);
       const keywords =
         evidenceKeywords.length >= 2 ? evidenceKeywords : chunkKeywords;
-      const id = `generated-${String(cases.length + 1).padStart(3, "0")}`;
 
-      cases.push({
-        id,
-        category: "answerable",
-        question: buildQuestion(document.title, chunk, keywords, evidenceQuote),
-        expected: {
-          answerable: true,
-          answerKeywords: keywords.slice(0, 3),
-          sourceKeywords: keywords,
-          evidenceQuote,
-        },
-        generated: {
-          docId: document.docId,
-          title: document.title,
-          chunkIndex: chunk.chunkIndex,
-          section: chunk.section,
-          startOffset: chunk.startOffset,
-          endOffset: chunk.endOffset,
-        },
-      });
+      candidateCases.push(
+        ...buildChunkCaseCandidates(document, chunk, keywords, evidenceQuote),
+      );
     }
+
+    candidateCases.push(...buildMultiChunkCaseCandidates(document, chunks));
   }
+
+  const cases = selectBalancedCases(candidateCases, maxAnswerableCases).map(
+    (testCase, index) => ({
+      id: `generated-${String(index + 1).padStart(3, "0")}`,
+      ...testCase,
+    }),
+  );
 
   if (cases.length === 0) {
     throw new Error(
@@ -150,6 +174,195 @@ function buildQuestion(
   return `Какая информация есть про ${keywordHint} в ${subject}?`;
 }
 
+function buildChunkCaseCandidates(
+  document: EvalDocument,
+  chunk: TextChunk,
+  keywords: string[],
+  evidenceQuote: string,
+): Array<Omit<GeneratedEvalCase, "id">> {
+  const cases: Array<Omit<GeneratedEvalCase, "id">> = [
+    {
+      category: "answerable",
+      question: buildQuestion(document.title, chunk, keywords, evidenceQuote),
+      expected: {
+        answerable: true,
+        answerKeywords: keywords.slice(0, 3),
+        sourceKeywords: keywords,
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, chunk),
+    },
+    {
+      category: "partial",
+      question: `Что документ "${document.title}" говорит про ${keywords[0]}, и какие ограничения или исключения для этого указаны?`,
+      expected: {
+        answerable: true,
+        answerKeywords: [keywords[0]],
+        sourceKeywords: keywords.slice(0, 2),
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, chunk),
+    },
+    {
+      category: "tutor-broad",
+      question: `Объясни простыми словами, что в документе "${document.title}" сказано про ${keywords[0]}.`,
+      expected: {
+        answerable: true,
+        answerKeywords: [keywords[0]],
+        sourceKeywords: keywords.slice(0, 2),
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, chunk),
+    },
+  ];
+
+  const definitionTerm = findDefinitionTerm(chunk.text, keywords);
+
+  if (definitionTerm) {
+    cases.push({
+      category: "definition",
+      question: `Что такое ${definitionTerm} в документе "${document.title}"?`,
+      expected: {
+        answerable: true,
+        answerKeywords: [definitionTerm, ...keywords.slice(0, 2)],
+        sourceKeywords: [definitionTerm],
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, chunk),
+    });
+  }
+
+  const mentionedTerm = keywords.find(
+    (keyword) => !hasDefinitionSignal(chunk.text, keyword),
+  );
+
+  if (mentionedTerm) {
+    cases.push({
+      category: "mentioned-not-defined",
+      question: `Что такое ${mentionedTerm} в документе "${document.title}"?`,
+      expected: {
+        answerable: true,
+        answerKeywords: ["не определяется", "явно", mentionedTerm],
+        sourceKeywords: [mentionedTerm],
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, chunk),
+    });
+  }
+
+  return cases;
+}
+
+function buildMultiChunkCaseCandidates(
+  document: EvalDocument,
+  chunks: TextChunk[],
+): Array<Omit<GeneratedEvalCase, "id">> {
+  if (chunks.length < 2) {
+    return [];
+  }
+
+  const left = chunks[0];
+  const right = chunks.find((chunk) => chunk.chunkIndex !== left.chunkIndex);
+
+  if (!right) {
+    return [];
+  }
+
+  const leftKeywords = selectKeywords(left.text, 4).filter(isStrongLinkTerm);
+  const rightKeywords = selectKeywords(right.text, 4).filter(isStrongLinkTerm);
+  const leftTerm = leftKeywords[0];
+  const rightTerm = rightKeywords.find((keyword) => keyword !== leftTerm);
+
+  if (!leftTerm || !rightTerm) {
+    return [];
+  }
+
+  const evidenceQuote = createPreview(
+    `${createEvidenceQuote(left.text, leftKeywords)} ${createEvidenceQuote(
+      right.text,
+      rightKeywords,
+    )}`,
+    260,
+  );
+
+  return [
+    {
+      category: "multi-chunk",
+      question: `Как в документе "${document.title}" связаны ${leftTerm} и ${rightTerm}?`,
+      expected: {
+        answerable: true,
+        answerKeywords: [leftTerm, rightTerm],
+        sourceKeywords: [leftTerm, rightTerm],
+        evidenceQuote,
+      },
+      generated: buildGeneratedMetadata(document, left),
+    },
+  ];
+}
+
+function isStrongLinkTerm(token: string) {
+  if (/^[a-z_][a-z0-9_-]*$/u.test(token)) {
+    return true;
+  }
+
+  return !/(ого|его|ему|ому|ыми|ими|ая|ое|ый|ий)$/u.test(token);
+}
+
+function buildGeneratedMetadata(document: EvalDocument, chunk: TextChunk) {
+  return {
+    docId: document.docId,
+    title: document.title,
+    chunkIndex: chunk.chunkIndex,
+    section: chunk.section,
+    startOffset: chunk.startOffset,
+    endOffset: chunk.endOffset,
+  };
+}
+
+function selectBalancedCases(
+  candidates: Array<Omit<GeneratedEvalCase, "id">>,
+  limit: number,
+) {
+  const categories: GeneratedEvalCategory[] = [
+    "definition",
+    "mentioned-not-defined",
+    "partial",
+    "multi-chunk",
+    "tutor-broad",
+    "answerable",
+  ];
+  const selected: Array<Omit<GeneratedEvalCase, "id">> = [];
+  const usedQuestions = new Set<string>();
+
+  while (selected.length < limit) {
+    const before = selected.length;
+
+    for (const category of categories) {
+      const next = candidates.find(
+        (testCase) =>
+          testCase.category === category && !usedQuestions.has(testCase.question),
+      );
+
+      if (!next) {
+        continue;
+      }
+
+      selected.push(next);
+      usedQuestions.add(next.question);
+
+      if (selected.length >= limit) {
+        break;
+      }
+    }
+
+    if (selected.length === before) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
 function selectKeywords(text: string, limit: number) {
   const counts = new Map<string, number>();
   const textWithoutCode = toEvalProse(text);
@@ -190,6 +403,46 @@ function extractMarkedTerms(text: string) {
   return terms;
 }
 
+function findDefinitionTerm(text: string, keywords: string[]) {
+  return keywords.find((keyword) => hasDefinitionSignal(text, keyword));
+}
+
+function hasDefinitionSignal(text: string, keyword: string) {
+  const normalizedKeyword = keyword.toLocaleLowerCase();
+  const sentences = toEvalProse(text)
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  return sentences.some((sentence) => {
+    const normalizedSentence = sentence.toLocaleLowerCase();
+    const keywordIndex = normalizedSentence.indexOf(normalizedKeyword);
+
+    if (keywordIndex === -1) {
+      return false;
+    }
+
+    return [
+      /\s[-–—]\s/iu,
+      /\bэто\b/iu,
+      /\bявляется\b/iu,
+      /\bозначает\b/iu,
+      /\bis\b/iu,
+      /\bare\b/iu,
+      /\bmeans\b/iu,
+      /\brefers to\b/iu,
+    ].some((pattern) => {
+      const match = pattern.exec(normalizedSentence);
+
+      if (!match?.index) {
+        return false;
+      }
+
+      return match.index > keywordIndex && match.index - keywordIndex <= 80;
+    });
+  });
+}
+
 function tokenizeKeywordCandidates(text: string) {
   return text
     .toLocaleLowerCase()
@@ -203,11 +456,25 @@ function isKeywordCandidate(token: string) {
     return false;
   }
 
+  if (GENERIC_NON_TERMS.has(token)) {
+    return false;
+  }
+
   if (/^[a-z_][a-z0-9_]*$/u.test(token) && token.length < 6) {
     return false;
   }
 
-  return token.length >= 6 && token.length <= 32;
+  if (/^[а-яё]+$/u.test(token)) {
+    if (token.length < 7) {
+      return false;
+    }
+
+    if (/(ается|яется|ется|ются|ится|ться|ать|ять|ить)$/u.test(token)) {
+      return false;
+    }
+  }
+
+  return token.length >= 4 && token.length <= 32;
 }
 
 function createEvidenceQuote(text: string, keywords: string[]) {
