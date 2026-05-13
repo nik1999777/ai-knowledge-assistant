@@ -2,10 +2,11 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAppError } from "../../utils/app-error.js";
 
-type EvalReportMode = "generated" | "seed";
+type EvalReportMode = "generated" | "modes" | "seed";
 
 const REPORT_FILES: Record<EvalReportMode, string> = {
   generated: "last-generated-report.json",
+  modes: "last-mode-matrix-report.json",
   seed: "last-seed-report.json",
 };
 
@@ -33,6 +34,8 @@ function getMissingReportMessage(mode: EvalReportMode) {
       return "Seed eval report не найден. Запустите npm run eval:seed из apps/api";
     case "generated":
       return "Generated eval report не найден. Запустите npm run eval:generated из apps/api";
+    case "modes":
+      return "Mode matrix eval report не найден. Запустите npm run eval:modes из apps/api";
   }
 }
 

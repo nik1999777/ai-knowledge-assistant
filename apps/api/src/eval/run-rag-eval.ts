@@ -4,6 +4,8 @@ import { streamChatWithKnowledgeBase } from "../modules/chat/chat.service.js";
 import type { RagDebug } from "../modules/chat/chat.types.js";
 import type { DocumentScope } from "../repositories/documents.repository.js";
 
+export type RagEvalAnswerMode = NonNullable<RagDebug["answerMode"]>;
+
 type EvalCase = {
   id: string;
   category?: EvalCategory;
@@ -54,6 +56,7 @@ type EvalSourceSnapshot = {
 
 type RunRagEvalOptions = {
   allowedSourceDocIds?: Set<string>;
+  answerMode?: RagEvalAnswerMode;
   datasetPath: string;
   documentScope?: DocumentScope;
   label?: string;
@@ -135,17 +138,22 @@ export async function runRagEval(options: RunRagEvalOptions) {
     `[${options.label ?? "eval"}] answerability_accuracy=${summary.answerabilityAccuracy.toFixed(3)} answerable_rate=${summary.answerableRate.toFixed(3)} decline_rate=${summary.declineRate.toFixed(3)} avg_best_score=${summary.avgBestScore.toFixed(3)} avg_vector=${summary.avgVectorCount.toFixed(2)} avg_lexical=${summary.avgLexicalCount.toFixed(2)} avg_merged=${summary.avgMergedCount.toFixed(2)} fp=${summary.confusion.fp} fn=${summary.confusion.fn} tp=${summary.confusion.tp} tn=${summary.confusion.tn} recommended_threshold=${summary.recommendedThreshold.threshold.toFixed(3)} recommended_accuracy=${summary.recommendedThreshold.accuracy.toFixed(3)} dual_decline=${summary.recommendedDualThreshold.declineThreshold.toFixed(3)} dual_answer=${summary.recommendedDualThreshold.answerThreshold.toFixed(3)} dual_accuracy=${summary.recommendedDualThreshold.accuracy.toFixed(3)}`,
   );
   console.log(`[${options.label ?? "eval"}] report: ${options.reportPath}`);
+
+  return payload;
 }
 
 async function evaluateCase(
   testCase: EvalCase,
-  options: Pick<RunRagEvalOptions, "allowedSourceDocIds" | "documentScope"> = {},
+  options: Pick<
+    RunRagEvalOptions,
+    "allowedSourceDocIds" | "answerMode" | "documentScope"
+  > = {},
 ): Promise<EvalCaseResult> {
   let answer = "";
 
   const { answer: finalAnswer, meta } = await streamChatWithKnowledgeBase(
     {
-      answerMode: "balanced",
+      answerMode: options.answerMode ?? "balanced",
       question: testCase.question,
     },
     (chunk) => {

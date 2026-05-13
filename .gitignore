@@ -21,6 +21,8 @@ pnpm-debug.log*
 # Generated eval reports
 test-data/rag-eval/last-seed-report.json
 test-data/rag-eval/last-generated-report.json
+test-data/rag-eval/last-mode-matrix-report.json
+test-data/rag-eval/last-mode-matrix-*-report.json
 test-data/rag-eval/questions.generated.json
 
 # OS / editor

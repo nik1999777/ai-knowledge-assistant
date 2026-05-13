@@ -138,3 +138,16 @@ export type EvalReport = {
   };
   results: EvalCaseResult[];
 };
+
+export type EvalModeMatrixReport = {
+  generatedAt: string;
+  dataset: "seed";
+  modes: Array<{
+    answerMode: "strict" | "balanced" | "tutor";
+    summary: EvalReport["summary"];
+    failedResults: EvalCaseResult[];
+    results: EvalCaseResult[];
+  }>;
+};
+
+export type EvalReportResponse = EvalReport | EvalModeMatrixReport;

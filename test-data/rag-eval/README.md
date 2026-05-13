@@ -9,9 +9,11 @@
 - `seed-docs/`: фиксированные документы, которые используются для воспроизводимого benchmark
 - `last-seed-report.json`: отчет последнего прогона `eval:seed`
 - `last-generated-report.json`: отчет последнего прогона `eval:generated`
+- `last-mode-matrix-report.json`: сравнение `strict`, `balanced`, `tutor` на seed benchmark
 
-`questions.generated.json` и `last-generated-report.json` игнорируются git, потому что
-они могут содержать фрагменты пользовательских документов.
+Generated reports игнорируются git, потому что они могут содержать фрагменты
+пользовательских документов. Mode matrix reports тоже игнорируются как
+локальные runtime-артефакты.
 
 ## Режимы eval
 
@@ -47,6 +49,18 @@ npm run eval:generated
 
 Сначала регенерирует `questions.generated.json`, затем прогоняет его через обычный
 RAG eval flow и пишет `last-generated-report.json`.
+
+### `eval:modes`
+
+```bash
+cd apps/api
+npm run eval:modes
+```
+
+Переиндексирует seed-документы, затем прогоняет `questions.seed.json` в трех
+answer modes: `strict`, `balanced`, `tutor`. Итоговый report
+`last-mode-matrix-report.json` сравнивает accuracy, FP/FN, decline rate,
+policy/model declines и средний answer support score между режимами.
 
 ## Формат кейса
 

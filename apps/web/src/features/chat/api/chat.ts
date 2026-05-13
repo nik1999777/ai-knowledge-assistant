@@ -4,7 +4,7 @@ import type {
   ChatSessionSummary,
   ChatSessionsResponse,
   ChatStreamMeta,
-  type AnswerMode,
+  AnswerMode,
 } from "../types/chat";
 
 type StreamQuestionHandlers = {

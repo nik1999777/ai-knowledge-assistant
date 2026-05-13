@@ -234,6 +234,7 @@ cd apps/api
 npm run eval:seed
 npm run eval:generate
 npm run eval:generated
+npm run eval:modes
 ```
 
 - `eval:seed`: reindexes stable seed docs into `documentScope=eval`, runs
@@ -242,6 +243,9 @@ npm run eval:generated
   document chunks.
 - `eval:generated`: regenerates `questions.generated.json`, runs those cases
   against `documentScope=user`, and writes `last-generated-report.json`.
+- `eval:modes`: reindexes stable seed docs once, runs `questions.seed.json`
+  with `strict`, `balanced`, and `tutor`, and writes
+  `last-mode-matrix-report.json`.
 
 Generated eval foundation is deterministic/extractive: it selects useful chunks,
 builds answerable questions from chunk keywords, stores expected answer/source
@@ -256,6 +260,10 @@ remains the regression benchmark.
 Eval case results include `answerMode`, `answerSupport`, and compact
 `retrievalTrace` snapshots, and the `/eval` failed-case cards can inspect the
 same support/trace signals used by chat debug.
+
+The `/eval` page also supports a Mode Matrix report that compares answer modes
+on accuracy, decline rate, confusion matrix, policy/model declines, and average
+answer support score.
 
 Current stable seed benchmark after grounded partial-answer prompt changes:
 
@@ -339,6 +347,8 @@ chunks to make grounding easier to inspect.
 1. Quality + eval foundation.
    - Keep eval first before adding more product features.
    - Expand eval cases.
+   - Mode Matrix exists for comparing `strict`, `balanced`, and `tutor` on the
+     seed benchmark.
    - Keep categories: `answerable`, `unanswerable`, `tricky`, `exact`,
      `multi-hop`.
    - Category summaries, failed cases, `bestScore`, `decision`,

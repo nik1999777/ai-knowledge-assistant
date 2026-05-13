@@ -469,6 +469,7 @@ export const EVAL_FACTS = [
   ["eval:seed", "Переиндексирует стабильные seed docs в `documentScope=eval` и гоняет `questions.seed.json`."],
   ["eval:generate", "Создает `questions.generated.json` из текущих user chunks: question, keywords, evidence quote и spans."],
   ["eval:generated", "Основной smoke-test для текущей user KB: регенерирует generated dataset и пишет `last-generated-report.json`."],
+  ["eval:modes", "Сравнивает `strict`, `balanced` и `tutor` на seed benchmark и пишет `last-mode-matrix-report.json`."],
   ["answerability_accuracy", "Главная метрика: правильно ли система ответила или отказалась."],
   ["tp/tn/fp/fn", "Confusion matrix по answerability: особенно важны FP, потому что это риск hallucination."],
   ["policyDeclined/modelDeclined", "Разделяет отказ policy и отказ самой модели после генерации."],
@@ -861,7 +862,7 @@ export const KNOWN_LIMITATIONS = [
 ];
 
 export const ROADMAP_ITEMS = [
-  ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`), summary по категориям, failed cases, bestScore, decision и guardrailReason."],
+  ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Mode Matrix уже сравнивает `strict`, `balanced` и `tutor` на seed benchmark; дальше нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`) и coverage сложных вопросов."],
   ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят extractive dataset из текущих chunks. Красный generated report считается диагностикой текущей user KB/retrieval/prompt, а не стабильным release benchmark. Следующий шаг: разнообразить категории, улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
   ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],

@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { getEvalReport } from "../../features/eval/api/eval";
 import type { EvalReportMode } from "../../features/eval/api/eval";
-import type { EvalCaseResult, EvalTraceItem } from "../../features/eval/types/eval";
+import type {
+  EvalCaseResult,
+  EvalModeMatrixReport,
+  EvalReport,
+  EvalTraceItem,
+} from "../../features/eval/types/eval";
 import { AppHeader } from "../../shared/components/AppHeader";
 import { ErrorCard } from "../../shared/components/ErrorCard";
 import { Layout } from "../../shared/components/Layout";
@@ -15,12 +20,14 @@ export function EvalPage() {
     queryFn: () => getEvalReport(reportMode),
   });
   const report = reportQuery.data;
+  const regularReport = report && !isModeMatrixReport(report) ? report : null;
+  const matrixReport = report && isModeMatrixReport(report) ? report : null;
   const failedCases = useMemo(
     () =>
-      (report?.results ?? [])
+      (regularReport?.results ?? [])
         .filter((result) => !result.answerabilityCorrect)
         .sort((left, right) => right.bestScore - left.bestScore),
-    [report],
+    [regularReport],
   );
 
   return (
@@ -49,6 +56,13 @@ export function EvalPage() {
           >
             Generated User KB
           </ModeButton>
+          <ModeButton
+            type="button"
+            onClick={() => setReportMode("modes")}
+            $active={reportMode === "modes"}
+          >
+            Mode Matrix
+          </ModeButton>
         </ModeToggle>
       </HeroCard>
 
@@ -64,55 +78,57 @@ export function EvalPage() {
         />
       ) : null}
 
-      {report ? (
+      {regularReport ? (
         <>
           <ModeHint>
             {getModeCommand(reportMode)}
           </ModeHint>
-          <MetaLine>Последний прогон: {formatDate(report.generatedAt)}</MetaLine>
+          <MetaLine>Последний прогон: {formatDate(regularReport.generatedAt)}</MetaLine>
 
           <MetricGrid>
-            <MetricCard $tone={qualityTone(report.summary.answerabilityAccuracy)}>
+            <MetricCard $tone={qualityTone(regularReport.summary.answerabilityAccuracy)}>
               <MetricLabel>Answerability accuracy</MetricLabel>
-              <MetricValue>{formatPercent(report.summary.answerabilityAccuracy)}</MetricValue>
+              <MetricValue>
+                {formatPercent(regularReport.summary.answerabilityAccuracy)}
+              </MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Total cases</MetricLabel>
-              <MetricValue>{report.summary.total}</MetricValue>
+              <MetricValue>{regularReport.summary.total}</MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Decline rate</MetricLabel>
-              <MetricValue>{formatPercent(report.summary.declineRate)}</MetricValue>
+              <MetricValue>{formatPercent(regularReport.summary.declineRate)}</MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Avg best score</MetricLabel>
-              <MetricValue>{report.summary.avgBestScore.toFixed(3)}</MetricValue>
+              <MetricValue>{regularReport.summary.avgBestScore.toFixed(3)}</MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Policy declined</MetricLabel>
-              <MetricValue>{report.summary.policyDeclined ?? "—"}</MetricValue>
+              <MetricValue>{regularReport.summary.policyDeclined ?? "—"}</MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Model declined</MetricLabel>
-              <MetricValue>{report.summary.modelDeclined ?? "—"}</MetricValue>
+              <MetricValue>{regularReport.summary.modelDeclined ?? "—"}</MetricValue>
             </MetricCard>
 
             <MetricCard $tone="warn">
               <MetricLabel>Model refusals after policy answer</MetricLabel>
               <MetricValue>
-                {report.summary.modelDeclinedAfterPolicyAnswer ?? "—"}
+                {regularReport.summary.modelDeclinedAfterPolicyAnswer ?? "—"}
               </MetricValue>
             </MetricCard>
 
             <MetricCard>
               <MetricLabel>Avg domain evidence</MetricLabel>
               <MetricValue>
-                {formatOptionalNumber(report.summary.avgDomainEvidence)}
+                {formatOptionalNumber(regularReport.summary.avgDomainEvidence)}
               </MetricValue>
             </MetricCard>
           </MetricGrid>
@@ -123,19 +139,19 @@ export function EvalPage() {
               <MatrixGrid>
                 <MatrixItem>
                   <SmallLabel>TP</SmallLabel>
-                  <strong>{report.summary.confusion.tp}</strong>
+                  <strong>{regularReport.summary.confusion.tp}</strong>
                 </MatrixItem>
                 <MatrixItem>
                   <SmallLabel>TN</SmallLabel>
-                  <strong>{report.summary.confusion.tn}</strong>
+                  <strong>{regularReport.summary.confusion.tn}</strong>
                 </MatrixItem>
                 <MatrixItem $danger>
                   <SmallLabel>FP</SmallLabel>
-                  <strong>{report.summary.confusion.fp}</strong>
+                  <strong>{regularReport.summary.confusion.fp}</strong>
                 </MatrixItem>
                 <MatrixItem $danger>
                   <SmallLabel>FN</SmallLabel>
-                  <strong>{report.summary.confusion.fn}</strong>
+                  <strong>{regularReport.summary.confusion.fn}</strong>
                 </MatrixItem>
               </MatrixGrid>
             </SectionCard>
@@ -145,28 +161,31 @@ export function EvalPage() {
               <ThresholdRow>
                 <ThresholdBlock>
                   <SmallLabel>Single</SmallLabel>
-                  <strong>{report.summary.recommendedThreshold.threshold.toFixed(3)}</strong>
+                  <strong>
+                    {regularReport.summary.recommendedThreshold.threshold.toFixed(3)}
+                  </strong>
                   <ThresholdMeta>
-                    accuracy {formatPercent(report.summary.recommendedThreshold.accuracy)}
+                    accuracy{" "}
+                    {formatPercent(regularReport.summary.recommendedThreshold.accuracy)}
                   </ThresholdMeta>
                 </ThresholdBlock>
                 <ThresholdBlock>
                   <SmallLabel>Dual decline / answer</SmallLabel>
                   <strong>
-                    {report.summary.recommendedDualThreshold.declineThreshold.toFixed(3)}
+                    {regularReport.summary.recommendedDualThreshold.declineThreshold.toFixed(3)}
                     {" / "}
-                    {report.summary.recommendedDualThreshold.answerThreshold.toFixed(3)}
+                    {regularReport.summary.recommendedDualThreshold.answerThreshold.toFixed(3)}
                   </strong>
                   <ThresholdMeta>
                     accuracy{" "}
-                    {formatPercent(report.summary.recommendedDualThreshold.accuracy)}
+                    {formatPercent(regularReport.summary.recommendedDualThreshold.accuracy)}
                   </ThresholdMeta>
                 </ThresholdBlock>
               </ThresholdRow>
             </SectionCard>
           </TwoColumn>
 
-          {report.summary.categorySummary?.length ? (
+          {regularReport.summary.categorySummary?.length ? (
             <SectionCard>
               <SectionTitle>Categories</SectionTitle>
               <CategoryTable>
@@ -181,7 +200,7 @@ export function EvalPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.summary.categorySummary.map((category) => (
+                  {regularReport.summary.categorySummary.map((category) => (
                     <tr key={category.category}>
                       <td>{category.category}</td>
                       <td>{category.total}</td>
@@ -216,7 +235,86 @@ export function EvalPage() {
           </SectionCard>
         </>
       ) : null}
+
+      {matrixReport ? <ModeMatrixReportView report={matrixReport} /> : null}
     </Layout>
+  );
+}
+
+function ModeMatrixReportView({ report }: { report: EvalModeMatrixReport }) {
+  const failedCases = report.modes.flatMap((mode) =>
+    mode.failedResults.map((result) => ({
+      mode: mode.answerMode,
+      result,
+    })),
+  );
+
+  return (
+    <>
+      <ModeHint>{getModeCommand("modes")}</ModeHint>
+      <MetaLine>
+        Последний прогон: {formatDate(report.generatedAt)} · dataset: {report.dataset}
+      </MetaLine>
+
+      <SectionCard>
+        <SectionTitle>Mode comparison</SectionTitle>
+        <CategoryTable>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Accuracy</th>
+              <th>Decline</th>
+              <th>Avg score</th>
+              <th>Avg support</th>
+              <th>TP/TN</th>
+              <th>FP/FN</th>
+              <th>Policy/model declines</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.modes.map((mode) => (
+              <tr key={mode.answerMode}>
+                <td>{formatAnswerMode(mode.answerMode)}</td>
+                <td>{formatPercent(mode.summary.answerabilityAccuracy)}</td>
+                <td>{formatPercent(mode.summary.declineRate)}</td>
+                <td>{mode.summary.avgBestScore.toFixed(3)}</td>
+                <td>{formatOptionalNumber(getAverageSupportScore(mode.results))}</td>
+                <td>
+                  {mode.summary.confusion.tp} / {mode.summary.confusion.tn}
+                </td>
+                <td>
+                  {mode.summary.confusion.fp} / {mode.summary.confusion.fn}
+                </td>
+                <td>
+                  {mode.summary.policyDeclined ?? "—"} /{" "}
+                  {mode.summary.modelDeclined ?? "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </CategoryTable>
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeader>
+          <SectionTitle>Failed cases across modes</SectionTitle>
+          <Muted>{failedCases.length} кейсов требуют внимания</Muted>
+        </SectionHeader>
+
+        {failedCases.length === 0 ? (
+          <InfoText>Все режимы прошли по answerability.</InfoText>
+        ) : (
+          <CasesList>
+            {failedCases.map(({ mode, result }) => (
+              <div key={`${mode}-${result.id}`}>
+                <ModeCaseLabel>{formatAnswerMode(mode)}</ModeCaseLabel>
+                <CaseCard result={result} />
+              </div>
+            ))}
+          </CasesList>
+        )}
+      </SectionCard>
+    </>
   );
 }
 
@@ -757,6 +855,36 @@ const TraceCard = styled.div`
   padding: 9px 10px;
 `;
 
+const ModeCaseLabel = styled.div`
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+`;
+
+function isModeMatrixReport(
+  report: EvalReport | EvalModeMatrixReport,
+): report is EvalModeMatrixReport {
+  return "modes" in report;
+}
+
+function getAverageSupportScore(results: EvalCaseResult[]) {
+  const scored = results.filter(
+    (result) => typeof result.answerSupport?.score === "number",
+  );
+
+  if (scored.length === 0) {
+    return undefined;
+  }
+
+  return (
+    scored.reduce((sum, result) => sum + (result.answerSupport?.score ?? 0), 0) /
+    scored.length
+  );
+}
+
 function formatPercent(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
 }
@@ -845,6 +973,8 @@ function getModeCommand(mode: EvalReportMode) {
       return "Команда: cd apps/api && npm run eval:seed";
     case "generated":
       return "Команда: cd apps/api && npm run eval:generated · основной smoke-test для текущей user KB";
+    case "modes":
+      return "Команда: cd apps/api && npm run eval:modes · сравнение strict / balanced / tutor на seed benchmark";
   }
 }
 

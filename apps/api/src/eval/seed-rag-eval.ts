@@ -6,21 +6,7 @@ import { initCollection } from "../clients/qdrant.client.js";
 import { initPostgres } from "../db/postgres.client.js";
 import { runMigrations } from "../db/migrator.js";
 import { runRagEval } from "./run-rag-eval.js";
-
-const SEED_DOCS = [
-  {
-    docId: "00000000-0000-4000-8000-000000000101",
-    fileName: "rag-basics.md",
-  },
-  {
-    docId: "00000000-0000-4000-8000-000000000102",
-    fileName: "vector-search.md",
-  },
-  {
-    docId: "00000000-0000-4000-8000-000000000103",
-    fileName: "ollama-local-stack.md",
-  },
-];
+import { SEED_EVAL_DOCS } from "./seed-eval-docs.js";
 
 async function main() {
   const projectRoot = path.resolve(process.cwd(), "../..");
@@ -32,13 +18,13 @@ async function main() {
   await runMigrations();
   await initCollection();
 
-  console.log(`[seed] reindexing seed docs, count=${SEED_DOCS.length}`);
+  console.log(`[seed] reindexing seed docs, count=${SEED_EVAL_DOCS.length}`);
 
-  for (const seedDoc of SEED_DOCS) {
+  for (const seedDoc of SEED_EVAL_DOCS) {
     await deleteDocument(seedDoc.docId).catch(() => undefined);
   }
 
-  for (const seedDoc of SEED_DOCS) {
+  for (const seedDoc of SEED_EVAL_DOCS) {
     const filePath = path.join(seedDocsDir, seedDoc.fileName);
     const buffer = await readFile(filePath);
     const result = await ingestUploadedDocument({
@@ -58,7 +44,7 @@ async function main() {
     datasetPath,
     reportPath,
     label: "seed-eval",
-    allowedSourceDocIds: new Set(SEED_DOCS.map((doc) => doc.docId)),
+    allowedSourceDocIds: new Set(SEED_EVAL_DOCS.map((doc) => doc.docId)),
     documentScope: "eval",
   });
 }
