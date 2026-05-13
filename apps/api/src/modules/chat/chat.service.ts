@@ -28,6 +28,8 @@ const MIN_TOKENS_FOR_EVIDENCE = 2;
 const DECLINE_SCORE_THRESHOLD = env.DECLINE_SCORE_THRESHOLD;
 const ANSWER_SCORE_THRESHOLD = env.ANSWER_SCORE_THRESHOLD;
 const RRF_K = 60;
+const RETRIEVAL_CANDIDATE_MULTIPLIER = 4;
+const LEXICAL_CHUNKS_PER_DOCUMENT = 3;
 const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
 
 type StreamChunkHandler = (chunk: string) => void;
@@ -156,7 +158,11 @@ async function buildRagChatContext(
   );
 
   const { result: rawResults, ms: searchMs } = await measureTime(() =>
-    searchSimilar(questionEmbedding, TOP_K * 2, options.documentScope),
+    searchSimilar(
+      questionEmbedding,
+      TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
+      options.documentScope,
+    ),
   );
 
   const existingDocIds = await getExistingDocumentIdsByScope(
@@ -203,14 +209,15 @@ async function buildRagChatContext(
 
   const lexicalDocuments = await searchDocumentsLexical(
     input.question,
-    TOP_K * 2,
+    TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
     options.documentScope,
   );
-  const lexicalSources = buildLexicalSources(input.question, lexicalDocuments, TOP_K * 2);
-  const mergedSources = fuseSourcesWithRrf(vectorSources, lexicalSources).slice(
-    0,
-    TOP_K * 2,
+  const lexicalSources = buildLexicalSources(
+    input.question,
+    lexicalDocuments,
+    TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
   );
+  const mergedSources = fuseSourcesWithRrf(vectorSources, lexicalSources);
   const rerankedSources = rerankSources(input.question, mergedSources).slice(0, TOP_K);
   const bestScore = rerankedSources[0]?.score ?? 0;
   const questionTokens = tokenizeForSearch(input.question);
@@ -271,14 +278,12 @@ function decideAnswerability(input: {
     return { shouldDecline: true, reason: "score_below_decline_threshold" } as const;
   }
 
-  if (input.bestScore >= ANSWER_SCORE_THRESHOLD) {
-    return { shouldDecline: false, reason: null } as const;
+  if (input.lowEvidence) {
+    return { shouldDecline: true, reason: "low_domain_evidence_mid_band" } as const;
   }
 
-  const hasHybridEvidence = input.lexicalCount > 0 || input.vectorCount > 1;
-
-  if (input.lowEvidence && !hasHybridEvidence) {
-    return { shouldDecline: true, reason: "low_domain_evidence_mid_band" } as const;
+  if (input.bestScore >= ANSWER_SCORE_THRESHOLD) {
+    return { shouldDecline: false, reason: null } as const;
   }
 
   return { shouldDecline: false, reason: null } as const;
@@ -300,18 +305,32 @@ function buildLexicalSources(
 
   for (const document of documents) {
     const chunks = chunkDocument(document.textContent);
+    const documentSources: RagSource[] = [];
 
     for (const chunk of chunks) {
       const overlap = tokenOverlapScore(tokens, chunk.text);
+      const titleOverlap = tokenOverlapScore(tokens, document.title);
+      const sectionOverlap = chunk.section
+        ? tokenOverlapScore(tokens, chunk.section)
+        : 0;
+      const scopedSectionOverlap = titleOverlap > 0 ? sectionOverlap : 0;
 
-      if (overlap === 0) {
+      if (overlap === 0 && titleOverlap === 0) {
         continue;
       }
 
       const rankScore = Math.min(1, document.lexicalRank * 3);
-      const score = Number((0.45 + overlap * 0.35 + rankScore * 0.2).toFixed(3));
+      const score = Number(
+        (
+          0.38 +
+          overlap * 0.32 +
+          titleOverlap * 0.18 +
+          scopedSectionOverlap * 0.12 +
+          rankScore * 0.12
+        ).toFixed(3),
+      );
 
-      sources.push({
+      documentSources.push({
         docId: document.docId,
         title: document.title,
         sourceType: document.sourceType,
@@ -324,6 +343,12 @@ function buildLexicalSources(
         score,
       });
     }
+
+    sources.push(
+      ...documentSources
+        .sort((left, right) => right.score - left.score)
+        .slice(0, LEXICAL_CHUNKS_PER_DOCUMENT),
+    );
   }
 
   return sources
@@ -430,6 +455,8 @@ function rerankSources(question: string, sources: RagSource[]) {
       const sectionOverlap = source.section
         ? tokenOverlapScore(tokens, source.section)
         : 0;
+      const scopedSectionOverlap = titleOverlap > 0 ? sectionOverlap : 0;
+      const metadataCoverage = Math.max(titleOverlap, scopedSectionOverlap);
       const phraseBonus =
         normalizedQuestion.length >= 8 &&
         searchable.toLocaleLowerCase().includes(normalizedQuestion)
@@ -440,8 +467,9 @@ function rerankSources(question: string, sources: RagSource[]) {
       const rerankedScore = clampScore(
         source.score +
           overlap * 0.06 +
-          titleOverlap * 0.03 +
-          sectionOverlap * 0.02 +
+          titleOverlap * 0.08 +
+          scopedSectionOverlap * 0.08 +
+          metadataCoverage * 0.03 +
           phraseBonus +
           shortPenalty,
       );

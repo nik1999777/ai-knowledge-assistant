@@ -223,53 +223,24 @@ export async function searchDocumentsLexical(
     lexical_rank: number;
   }>(
     `
-      WITH strict_matches AS (
-        SELECT
-          d.doc_id,
-          d.document_scope,
-          d.title,
-          d.source_type,
-          d.text_content,
-          d.updated_at,
-          (
-            ts_rank_cd(d.search_vector, to_tsquery('simple', $1)) * 1.12 +
-            CASE
-              WHEN d.title ILIKE $3 THEN 0.15
-              WHEN d.original_file_name ILIKE $3 THEN 0.08
-              ELSE 0
-            END
-          ) AS lexical_rank
-        FROM documents d
-        WHERE d.document_scope = $5
-          AND d.search_vector @@ to_tsquery('simple', $1)
-      ),
-      relaxed_matches AS (
-        SELECT
-          d.doc_id,
-          d.document_scope,
-          d.title,
-          d.source_type,
-          d.text_content,
-          d.updated_at,
-          (
-            ts_rank_cd(d.search_vector, to_tsquery('simple', $2)) +
-            CASE
-              WHEN d.title ILIKE $3 THEN 0.15
-              WHEN d.original_file_name ILIKE $3 THEN 0.08
-              ELSE 0
-            END
-          ) AS lexical_rank
-        FROM documents d
-        WHERE d.document_scope = $5
-          AND d.search_vector @@ to_tsquery('simple', $2)
-          AND NOT (d.search_vector @@ to_tsquery('simple', $1))
-      )
-      SELECT doc_id, document_scope, title, source_type, text_content, lexical_rank
-      FROM (
-        SELECT * FROM strict_matches
-        UNION ALL
-        SELECT * FROM relaxed_matches
-      ) ranked
+      SELECT
+        d.doc_id,
+        d.document_scope,
+        d.title,
+        d.source_type,
+        d.text_content,
+        (
+          ts_rank_cd(d.search_vector, to_tsquery('simple', $2)) +
+          ts_rank_cd(d.search_vector, to_tsquery('simple', $1)) * 0.12 +
+          CASE
+            WHEN d.title ILIKE $3 THEN 0.15
+            WHEN d.original_file_name ILIKE $3 THEN 0.08
+            ELSE 0
+          END
+        ) AS lexical_rank
+      FROM documents d
+      WHERE d.document_scope = $5
+        AND d.search_vector @@ to_tsquery('simple', $2)
       ORDER BY lexical_rank DESC, updated_at DESC
       LIMIT $4
     `,

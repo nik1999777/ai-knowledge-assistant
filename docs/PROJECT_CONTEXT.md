@@ -149,10 +149,16 @@ Retrieval is hybrid:
 
 - Vector search through Qdrant.
 - Lexical search through Postgres FTS.
+- Lexical ranking uses relaxed OR-match score as the base for all matching
+  documents, with strict AND-match as a bonus. This avoids burying strong
+  title/body matches whose strict rank is numerically tiny.
 - Deduplication by `docId:chunkIndex`.
 - Reciprocal Rank Fusion (RRF).
 - Local rerank with token overlap, title/section overlap, phrase bonus, and short
   chunk penalty.
+- Section overlap is treated as scoped metadata: it is strongest when the
+  document title also matches the query, so generic section names do not outrank
+  the intended document.
 
 Important source debug fields:
 
@@ -226,6 +232,15 @@ Current stable seed benchmark after RRF/scope changes:
 - `answerability_accuracy=1.000`
 - `tp=11`
 - `tn=4`
+- `fp=0`
+- `fn=0`
+
+Current generated user-KB smoke report after lexical ranking and metadata rerank
+changes:
+
+- `answerability_accuracy=1.000`
+- `tp=12`
+- `tn=3`
 - `fp=0`
 - `fn=0`
 
