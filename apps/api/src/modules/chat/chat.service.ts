@@ -20,7 +20,7 @@ import { measureTime } from "../../utils/timing.js";
 import { tokenizeForSearch } from "../../utils/tokenization.js";
 
 import type { ChatInput } from "./chat.schemas.js";
-import type { ChatStreamMeta, RagSource } from "./chat.types.js";
+import type { ChatStreamMeta, RagSource, RetrievalTraceItem } from "./chat.types.js";
 
 const TOP_K = env.TOP_K;
 const DOMAIN_GUARDRAIL_SCORE = 0.8;
@@ -33,6 +33,7 @@ const RETRIEVAL_CANDIDATE_MULTIPLIER = 4;
 const LEXICAL_CHUNKS_PER_DOCUMENT = 3;
 const MAX_QUERY_TOKENS_FOR_COVERAGE = 6;
 const MAX_SUPPORT_TERMS = 16;
+const TRACE_ITEMS_PER_STAGE = 8;
 const DECLINE_ANSWER = "Я не знаю на основе предоставленных данных.";
 
 type StreamChunkHandler = (chunk: string) => void;
@@ -49,6 +50,7 @@ type RagChatContext = {
   rerankedCount: number;
   sources: RagSource[];
   contextChunks: string[];
+  retrievalTrace: NonNullable<ChatStreamMeta["debug"]["retrievalTrace"]>;
   vectorCount: number;
   shouldDecline: boolean;
 };
@@ -95,6 +97,7 @@ export async function streamChatWithKnowledgeBase(
           lexicalCount: context.lexicalCount,
           mergedCount: context.mergedCount,
           rerankedCount: context.rerankedCount,
+          retrievalTrace: context.retrievalTrace,
           vectorCount: context.vectorCount,
         },
       },
@@ -141,6 +144,7 @@ export async function streamChatWithKnowledgeBase(
         lexicalCount: context.lexicalCount,
         mergedCount: context.mergedCount,
         rerankedCount: context.rerankedCount,
+        retrievalTrace: context.retrievalTrace,
         vectorCount: context.vectorCount,
       },
     },
@@ -262,7 +266,8 @@ async function buildRagChatContext(
     TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
   );
   const mergedSources = fuseSourcesWithRrf(vectorSources, lexicalSources);
-  const rerankedSources = rerankSources(input.question, mergedSources).slice(0, TOP_K);
+  const allRerankedSources = rerankSources(input.question, mergedSources);
+  const rerankedSources = allRerankedSources.slice(0, TOP_K);
   const bestScore = rerankedSources[0]?.score ?? 0;
   const questionTokens = tokenizeForSearch(input.question);
   const domainEvidence = calculateDomainEvidence(questionTokens, rerankedSources);
@@ -288,11 +293,46 @@ async function buildRagChatContext(
     lexicalCount: lexicalSources.length,
     mergedCount: mergedSources.length,
     rerankedCount: rerankedSources.length,
+    retrievalTrace: {
+      final: buildTraceItems(rerankedSources),
+      lexical: buildTraceItems(lexicalSources),
+      merged: buildTraceItems(mergedSources),
+      reranked: buildTraceItems(allRerankedSources),
+      vector: buildTraceItems(vectorSources),
+    },
     sources: rerankedSources,
     contextChunks: rerankedSources.map(formatPromptContextChunk),
     vectorCount: vectorSources.length,
     shouldDecline: decision.shouldDecline,
   };
+}
+
+function buildTraceItems(sources: RagSource[]): RetrievalTraceItem[] {
+  return sources.slice(0, TRACE_ITEMS_PER_STAGE).map((source) => ({
+    docId: source.docId,
+    title: source.title,
+    chunkIndex: source.chunkIndex,
+    origin: source.origin,
+    vectorRank: source.vectorRank,
+    vectorScore: source.vectorScore,
+    lexicalRank: source.lexicalRank,
+    lexicalScore: source.lexicalScore,
+    rrfScore: source.rrfScore,
+    finalScore: source.finalScore,
+    score: source.score,
+    section: source.section,
+    textPreview: createPreview(source.text, 220),
+  }));
+}
+
+function createPreview(value: string, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
 function formatPromptContextChunk(source: RagSource) {

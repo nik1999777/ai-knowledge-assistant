@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
-import type { ChatResponse } from "../types/chat";
+import type { ChatResponse, RetrievalTraceItem } from "../types/chat";
 
 type AnswerSectionProps = {
   data: ChatResponse;
@@ -13,9 +13,22 @@ type TextPart = {
   text: string;
 };
 
+const TRACE_STAGES: Array<{
+  key: keyof NonNullable<ChatResponse["debug"]["retrievalTrace"]>;
+  label: string;
+}> = [
+  { key: "vector", label: "Vector" },
+  { key: "lexical", label: "Lexical" },
+  { key: "merged", label: "Merged" },
+  { key: "reranked", label: "Rerank" },
+  { key: "final", label: "Final" },
+];
+
 export function AnswerSection({ data }: AnswerSectionProps) {
   const [showDebug, setShowDebug] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [activeTraceStage, setActiveTraceStage] =
+    useState<keyof NonNullable<ChatResponse["debug"]["retrievalTrace"]>>("final");
   const decisionLabel =
     data.debug.decision === "answered" ? "Ответ сгенерирован" : "Ответ отклонен";
   const decisionSummary =
@@ -178,6 +191,51 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                   <strong>{data.timing.totalMs} ms</strong>
                 </TimingPill>
               </TimingStrip>
+
+              {data.debug.retrievalTrace ? (
+                <TracePanel>
+                  <TraceHeader>
+                    <SectionTitle>Retrieval trace</SectionTitle>
+                    <TraceTabs>
+                      {TRACE_STAGES.map((stage) => (
+                        <TraceTab
+                          key={stage.key}
+                          type="button"
+                          $active={activeTraceStage === stage.key}
+                          onClick={() => setActiveTraceStage(stage.key)}
+                        >
+                          {stage.label}
+                        </TraceTab>
+                      ))}
+                    </TraceTabs>
+                  </TraceHeader>
+
+                  <TraceList>
+                    {data.debug.retrievalTrace[activeTraceStage].map((item, index) => (
+                      <TraceItemCard key={`${activeTraceStage}-${item.docId}-${item.chunkIndex}-${index}`}>
+                        <TraceItemHeader>
+                          <div>
+                            <TraceTitle>{item.title}</TraceTitle>
+                            <Meta>
+                              chunk: {item.chunkIndex}
+                              {item.section ? ` • section: ${item.section}` : ""}
+                            </Meta>
+                            <Meta>
+                              origin: {formatOrigin(item.origin)} • vector:{" "}
+                              {formatRankScore(item.vectorRank, item.vectorScore)} •
+                              lexical:{" "}
+                              {formatRankScore(item.lexicalRank, item.lexicalScore)} •
+                              RRF: {formatNumber(item.rrfScore)}
+                            </Meta>
+                          </div>
+                          <ScoreBadge>{formatTraceScore(item)}</ScoreBadge>
+                        </TraceItemHeader>
+                        <TracePreview>{item.textPreview}</TracePreview>
+                      </TraceItemCard>
+                    ))}
+                  </TraceList>
+                </TracePanel>
+              ) : null}
             </DetailsBody>
           ) : null}
         </DetailsCard>
@@ -387,6 +445,75 @@ const TimingStrip = styled.div`
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 14px;
+`;
+
+const TracePanel = styled.div`
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.66);
+`;
+
+const TraceHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+`;
+
+const TraceTabs = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+`;
+
+const TraceTab = styled.button<{ $active: boolean }>`
+  min-height: 28px;
+  border: 1px solid ${({ $active }) => ($active ? "var(--accent)" : "var(--border)")};
+  border-radius: 999px;
+  background: ${({ $active }) =>
+    $active ? "rgba(16, 163, 127, 0.1)" : "rgba(255, 255, 255, 0.78)"};
+  color: ${({ $active }) =>
+    $active ? "var(--accent-strong)" : "var(--text-secondary)"};
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+`;
+
+const TraceList = styled.div`
+  display: grid;
+  gap: 8px;
+`;
+
+const TraceItemCard = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: rgba(255, 255, 255, 0.72);
+`;
+
+const TraceItemHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+`;
+
+const TraceTitle = styled.div`
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.35;
+`;
+
+const TracePreview = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
 `;
 
 const SupportTerms = styled.div`
@@ -612,6 +739,14 @@ function formatRankScore(rank?: number, score?: number) {
   }
 
   return `#${rank ?? "?"} / ${formatNumber(score)}`;
+}
+
+function formatTraceScore(item: RetrievalTraceItem) {
+  if (typeof item.finalScore === "number") {
+    return `final ${formatNumber(item.finalScore)}`;
+  }
+
+  return `score ${formatNumber(item.score)}`;
 }
 
 function formatOrigin(origin?: "vector" | "lexical" | "hybrid") {

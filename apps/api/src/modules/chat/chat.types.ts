@@ -25,6 +25,22 @@ export type RagTiming = {
   totalMs: number;
 };
 
+export type RetrievalTraceItem = {
+  docId: string;
+  title: string;
+  chunkIndex: number;
+  origin?: "vector" | "lexical" | "hybrid";
+  vectorRank?: number;
+  vectorScore?: number;
+  lexicalRank?: number;
+  lexicalScore?: number;
+  rrfScore?: number;
+  finalScore?: number;
+  score: number;
+  section?: string | null;
+  textPreview: string;
+};
+
 export type RagDebug = {
   answerMode?: "strict" | "balanced" | "tutor";
   answerSupport?: {
@@ -40,6 +56,13 @@ export type RagDebug = {
   generationOptions?: {
     temperature: number;
     seed: number;
+  };
+  retrievalTrace?: {
+    final: RetrievalTraceItem[];
+    lexical: RetrievalTraceItem[];
+    merged: RetrievalTraceItem[];
+    reranked: RetrievalTraceItem[];
+    vector: RetrievalTraceItem[];
   };
   topK: number;
   decision: "answered" | "declined";

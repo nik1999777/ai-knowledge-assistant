@@ -190,6 +190,10 @@ Important source debug fields:
   `matchedTerms`, and `missingTerms`. It compares generated answer tokens
   against retrieved source text and is intended for debugging, not as a formal
   proof of factuality.
+- `retrievalTrace`: compact per-stage retrieval trace for chat/history debug:
+  `vector`, `lexical`, `merged`, `reranked`, and `final`. Each stage stores
+  candidate titles, chunk indexes, ranks/scores, and a short preview so the UI
+  can explain why the final context was selected.
 
 ## Decision Policy
 
@@ -281,6 +285,7 @@ The page currently includes:
 - Visual Document/Chat/Eval flows
 - Trace Explorer
 - Retrieval explanations
+- Retrieval trace tabs for vector, lexical, merged, reranked, and final context
 - Eval explanations
 - Storage map
 - API explorer
