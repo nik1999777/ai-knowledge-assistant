@@ -99,8 +99,13 @@ as `RAG_PROMPT_VERSION`.
 The current version is:
 
 ```text
-rag-grounded-v4
+rag-grounded-v5
 ```
+
+Version `rag-grounded-v5` uses grounded partial answers: when the context
+mentions a term but does not explicitly define it, the assistant should say the
+term is not explicitly defined in the found fragments and summarize only the
+available mentions instead of adding a definition from general model knowledge.
 
 Each chat response stores `debug.promptVersion`. Eval results also record the
 prompt version so quality reports can be tied to the prompt behavior that
@@ -227,10 +232,10 @@ test. A red generated report is a diagnostic signal for the current uploaded
 KB/retrieval/prompt behavior, not a stable release benchmark. `eval:seed`
 remains the regression benchmark.
 
-Current stable seed benchmark after RRF/scope changes:
+Current stable seed benchmark after grounded partial-answer prompt changes:
 
 - `answerability_accuracy=1.000`
-- `tp=11`
+- `tp=12`
 - `tn=4`
 - `fp=0`
 - `fn=0`

@@ -111,6 +111,16 @@
   },
   {
     "id": "seed-012",
+    "category": "answerable",
+    "question": "Что такое React?",
+    "expected": {
+      "answerable": true,
+      "answerKeywords": ["явно", "фрагмент", "frontend"],
+      "sourceKeywords": ["React frontend позволяет пользователю"]
+    }
+  },
+  {
+    "id": "seed-013",
     "category": "unanswerable",
     "question": "Какая столица Франции?",
     "expected": {
@@ -118,7 +128,7 @@
     }
   },
   {
-    "id": "seed-013",
+    "id": "seed-014",
     "category": "unanswerable",
     "question": "Кто президент США прямо сейчас?",
     "expected": {
@@ -126,7 +136,7 @@
     }
   },
   {
-    "id": "seed-014",
+    "id": "seed-015",
     "category": "unanswerable",
     "question": "Какой курс доллара сегодня?",
     "expected": {
@@ -134,7 +144,7 @@
     }
   },
   {
-    "id": "seed-015",
+    "id": "seed-016",
     "category": "unanswerable",
     "question": "Что такое finalStatusModels в документации METRICS?",
     "expected": {
@@ -142,4 +152,3 @@
     }
   }
 ]
-

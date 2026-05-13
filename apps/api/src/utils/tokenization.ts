@@ -1,4 +1,4 @@
-const STOP_WORDS = new Set([
+const QUERY_BOILERPLATE_WORDS = new Set([
   "about",
   "also",
   "and",
@@ -53,7 +53,7 @@ export function tokenizeForSearch(value: string) {
         .split(/[^\p{L}\p{N}]+/u)
         .map((token) => token.trim())
         .filter((token) => token.length >= 3)
-        .filter((token) => !STOP_WORDS.has(token)),
+        .filter((token) => !QUERY_BOILERPLATE_WORDS.has(token)),
     ),
   ];
 }
