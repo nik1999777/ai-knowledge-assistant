@@ -358,7 +358,9 @@ function selectKeywords(text: string, limit: number) {
   const proseLower = prose.toLocaleLowerCase();
 
   for (const token of extractInlineCodeTerms(text)) {
-    if (proseLower.includes(token)) {
+    // Only boost Latin/mixed inline-code terms that also appear in prose.
+    // Pure Cyrillic tokens from inline code are usually verb forms in comments, not domain terms.
+    if (!/^[а-яё]+$/u.test(token) && proseLower.includes(token)) {
       addKeywordScore(counts, token, 4);
     }
   }
@@ -515,31 +517,36 @@ function toEvalProse(text: string) {
     .trim();
 }
 
-function isCodeLikeLine(line: string) {
-  if (/^```/.test(line)) {
+const CODE_SYMBOL_PATTERN = /[{}()[\]=<>:;]/g;
+const CODE_SYMBOL_RATIO_THRESHOLD = 0.15;
+
+function isCodeLikeLine(line: string): boolean {
+  const trimmed = line.trim();
+
+  if (!trimmed || /^```/.test(trimmed)) {
     return true;
   }
 
-  if (
-    /^(import|from|const|let|var|function|class|return|if|else|for|while|try|catch|break|continue|def|self|super|pass|elif|lambda|yield|raise|assert|async|await)\b/.test(
-      line,
-    )
-  ) {
+  // Language-agnostic: code has high density of structural symbols
+  const symbolCount = (trimmed.match(CODE_SYMBOL_PATTERN) ?? []).length;
+
+  if (symbolCount / trimmed.length > CODE_SYMBOL_RATIO_THRESHOLD) {
     return true;
   }
 
-  // Python class/function definition: word(args):
-  if (/^\w[\w.]*\s*\(.*\)\s*:/.test(line)) {
+  // Catches function/method/class definitions without keyword lists:
+  // Python: def foo(x):   Ruby: def foo(x)   JS: foo(x) {
+  if (/^\w[\w.]*\s*\(.*\)\s*[:;{]?\s*$/.test(trimmed)) {
     return true;
   }
 
-  const codeSignals = [
-    /[{};]/,
-    /\b\w+\s*\(/,
-    /(?:^|\s)[\w.]+\s*(?:=|\+=|-=|\*=|\/=|==|===|<=|>=|=>)/,
-  ];
+  // Module import pattern: universal across Python, JS, Go, Rust, Java, etc.
+  // These lines have no structural symbols but are definitively code.
+  if (/^(import|from)\s+\S/.test(trimmed)) {
+    return true;
+  }
 
-  return codeSignals.filter((pattern) => pattern.test(line)).length >= 2;
+  return false;
 }
 
 function buildUnanswerableCases(existingCount: number): GeneratedEvalCase[] {
