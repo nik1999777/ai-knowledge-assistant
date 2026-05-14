@@ -3,9 +3,8 @@ import { searchSimilar } from "../../clients/qdrant.client.js";
 import {
   type DocumentScope,
   getExistingDocumentIdsByScope,
-  searchDocumentsLexical,
+  searchDocumentChunksLexical,
 } from "../../repositories/documents.repository.js";
-import { chunkDocument } from "../../services/chunk.service.js";
 import { getEmbedding } from "../../services/embeddings.service.js";
 import {
   LLM_GENERATION_OPTIONS,
@@ -30,7 +29,6 @@ const DECLINE_SCORE_THRESHOLD = env.DECLINE_SCORE_THRESHOLD;
 const ANSWER_SCORE_THRESHOLD = env.ANSWER_SCORE_THRESHOLD;
 const RRF_K = 60;
 const RETRIEVAL_CANDIDATE_MULTIPLIER = 4;
-const LEXICAL_CHUNKS_PER_DOCUMENT = 3;
 const MAX_QUERY_TOKENS_FOR_COVERAGE = 6;
 const MAX_SUPPORT_TERMS = 16;
 const TRACE_ITEMS_PER_STAGE = 8;
@@ -255,16 +253,12 @@ async function buildRagChatContext(
     vectorScore: item.score ?? 0,
   }));
 
-  const lexicalDocuments = await searchDocumentsLexical(
+  const lexicalChunks = await searchDocumentChunksLexical(
     input.question,
     TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
     options.documentScope,
   );
-  const lexicalSources = buildLexicalSources(
-    input.question,
-    lexicalDocuments,
-    TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
-  );
+  const lexicalSources = buildLexicalSources(input.question, lexicalChunks);
   const mergedSources = fuseSourcesWithRrf(vectorSources, lexicalSources);
   const allRerankedSources = rerankSources(input.question, mergedSources);
   const rerankedSources = allRerankedSources.slice(0, TOP_K);
@@ -375,35 +369,19 @@ function decideAnswerability(input: {
 
 function buildLexicalSources(
   question: string,
-  documents: Array<{
-    docId: string;
-    title: string;
-    sourceType: NonNullable<RagSource["sourceType"]>;
-    textContent: string;
-    lexicalRank: number;
-  }>,
-  limit: number,
+  chunks: import("../../repositories/documents.repository.js").LexicalChunkMatch[],
 ): RagSource[] {
   const tokens = tokenizeForSearch(question);
-  const sources: RagSource[] = [];
 
-  for (const document of documents) {
-    const chunks = chunkDocument(document.textContent);
-    const documentSources: RagSource[] = [];
-
-    for (const chunk of chunks) {
-      const overlap = tokenOverlapScore(tokens, chunk.text);
-      const titleOverlap = tokenOverlapScore(tokens, document.title);
+  return chunks
+    .map((chunk, index) => {
+      const overlap = tokenOverlapScore(tokens, chunk.chunkText);
+      const titleOverlap = tokenOverlapScore(tokens, chunk.title);
       const sectionOverlap = chunk.section
         ? tokenOverlapScore(tokens, chunk.section)
         : 0;
       const scopedSectionOverlap = titleOverlap > 0 ? sectionOverlap : 0;
-
-      if (overlap === 0 && titleOverlap === 0) {
-        continue;
-      }
-
-      const rankScore = Math.min(1, document.lexicalRank * 3);
+      const rankScore = Math.min(1, chunk.lexicalRank * 3);
       const score = Number(
         (
           0.38 +
@@ -414,36 +392,23 @@ function buildLexicalSources(
         ).toFixed(3),
       );
 
-      documentSources.push({
-        docId: document.docId,
-        title: document.title,
-        sourceType: document.sourceType,
-        text: chunk.text,
+      return {
+        docId: chunk.docId,
+        title: chunk.title,
+        sourceType: chunk.sourceType,
+        text: chunk.chunkText,
         chunkIndex: chunk.chunkIndex,
         chunkLen: chunk.chunkLen,
         startOffset: chunk.startOffset,
         endOffset: chunk.endOffset,
         section: chunk.section,
         score,
-      });
-    }
-
-    sources.push(
-      ...documentSources
-        .sort((left, right) => right.score - left.score)
-        .slice(0, LEXICAL_CHUNKS_PER_DOCUMENT),
-    );
-  }
-
-  return sources
-    .sort((left, right) => right.score - left.score)
-    .slice(0, limit)
-    .map((source, index) => ({
-      ...source,
-      origin: "lexical",
-      lexicalRank: index + 1,
-      lexicalScore: source.score,
-    }));
+        origin: "lexical" as const,
+        lexicalRank: index + 1,
+        lexicalScore: score,
+      };
+    })
+    .filter((s) => s.score > 0.38);
 }
 
 function fuseSourcesWithRrf(vectorSources: RagSource[], lexicalSources: RagSource[]) {

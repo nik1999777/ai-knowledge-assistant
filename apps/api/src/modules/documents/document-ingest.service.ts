@@ -1,4 +1,9 @@
-import { createDocument, deleteDocumentRecordByDocId } from "../../repositories/documents.repository.js";
+import {
+  createDocument,
+  deleteDocumentRecordByDocId,
+  saveDocumentChunks,
+  deleteDocumentChunks,
+} from "../../repositories/documents.repository.js";
 import { chunkDocument } from "../../services/chunk.service.js";
 import {
   parseUploadedDocuments,
@@ -74,9 +79,11 @@ async function ingestParsedDocument(input: {
     chunks.map((chunk) => getEmbedding(chunk.text)),
   );
 
+  const scope = input.documentScope ?? "user";
+
   await createDocument({
     docId,
-    documentScope: input.documentScope ?? "user",
+    documentScope: scope,
     title: parsedDocument.title,
     sourceType: parsedDocument.sourceType,
     originalFileName: input.originalFileName,
@@ -88,15 +95,29 @@ async function ingestParsedDocument(input: {
   });
 
   try {
+    await saveDocumentChunks(
+      chunks.map((chunk) => ({
+        docId,
+        documentScope: scope,
+        chunkIndex: chunk.chunkIndex,
+        section: chunk.section,
+        chunkText: chunk.text,
+        chunkLen: chunk.chunkLen,
+        startOffset: chunk.startOffset,
+        endOffset: chunk.endOffset,
+      })),
+    );
+
     await saveChunks(
       docId,
-      input.documentScope ?? "user",
+      scope,
       parsedDocument.title,
       parsedDocument.sourceType,
       chunks,
       embeddings,
     );
   } catch (error) {
+    await deleteDocumentChunks(docId);
     await deleteDocumentRecordByDocId(docId);
     throw error;
   }

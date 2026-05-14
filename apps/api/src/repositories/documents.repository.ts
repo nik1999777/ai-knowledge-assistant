@@ -34,6 +34,30 @@ export type LexicalDocumentMatch = {
   lexicalRank: number;
 };
 
+export type LexicalChunkMatch = {
+  docId: string;
+  title: string;
+  sourceType: DocumentSourceType;
+  chunkIndex: number;
+  section: string | null;
+  chunkText: string;
+  chunkLen: number;
+  startOffset: number;
+  endOffset: number;
+  lexicalRank: number;
+};
+
+export type DocumentChunkInput = {
+  docId: string;
+  documentScope: DocumentScope;
+  chunkIndex: number;
+  section: string | null;
+  chunkText: string;
+  chunkLen: number;
+  startOffset: number;
+  endOffset: number;
+};
+
 export type EvalDocument = {
   docId: string;
   documentScope: DocumentScope;
@@ -282,6 +306,109 @@ export async function listDocumentsForEval(
     title: row.title,
     sourceType: row.source_type,
     textContent: row.text_content,
+  }));
+}
+
+export async function saveDocumentChunks(chunks: DocumentChunkInput[]) {
+  if (chunks.length === 0) return;
+
+  const values = chunks
+    .map(
+      (_, i) =>
+        `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, to_tsvector('simple', $${i * 9 + 9}))`,
+    )
+    .join(", ");
+
+  const params = chunks.flatMap((c) => [
+    c.docId,
+    c.documentScope,
+    c.chunkIndex,
+    c.section,
+    c.chunkLen,
+    c.startOffset,
+    c.endOffset,
+    c.chunkText,
+    c.chunkText,
+  ]);
+
+  await pool.query(
+    `INSERT INTO document_chunks
+      (doc_id, document_scope, chunk_index, section, chunk_len, start_offset, end_offset, chunk_text, search_vector)
+     VALUES ${values}
+     ON CONFLICT (doc_id, chunk_index) DO NOTHING`,
+    params,
+  );
+}
+
+export async function deleteDocumentChunks(docId: string) {
+  await pool.query("DELETE FROM document_chunks WHERE doc_id = $1", [docId]);
+}
+
+export async function searchDocumentChunksLexical(
+  query: string,
+  limit = 32,
+  scope: DocumentScope = "user",
+): Promise<LexicalChunkMatch[]> {
+  const tokens = tokenizeLexicalQuery(query);
+  const strictTsQuery = buildTsQuery(tokens, "strict");
+  const relaxedTsQuery = buildTsQuery(tokens, "relaxed");
+
+  if (tokens.length === 0 || relaxedTsQuery.length === 0) {
+    return [];
+  }
+
+  const result = await pool.query<{
+    doc_id: string;
+    title: string;
+    source_type: DocumentSourceType;
+    chunk_index: number;
+    section: string | null;
+    chunk_text: string;
+    chunk_len: number;
+    start_offset: number;
+    end_offset: number;
+    lexical_rank: number;
+  }>(
+    `
+      SELECT
+        c.doc_id,
+        d.title,
+        d.source_type,
+        c.chunk_index,
+        c.section,
+        c.chunk_text,
+        c.chunk_len,
+        c.start_offset,
+        c.end_offset,
+        (
+          ts_rank_cd(c.search_vector, to_tsquery('simple', $2)) +
+          ts_rank_cd(c.search_vector, to_tsquery('simple', $1)) * 0.12 +
+          CASE
+            WHEN d.title ILIKE $3 THEN 0.15
+            ELSE 0
+          END
+        ) AS lexical_rank
+      FROM document_chunks c
+      JOIN documents d ON d.doc_id = c.doc_id
+      WHERE c.document_scope = $5
+        AND c.search_vector @@ to_tsquery('simple', $2)
+      ORDER BY lexical_rank DESC
+      LIMIT $4
+    `,
+    [strictTsQuery, relaxedTsQuery, `%${query.trim()}%`, limit, scope],
+  );
+
+  return result.rows.map((row) => ({
+    docId: row.doc_id,
+    title: row.title,
+    sourceType: row.source_type,
+    chunkIndex: row.chunk_index,
+    section: row.section,
+    chunkText: row.chunk_text,
+    chunkLen: row.chunk_len,
+    startOffset: row.start_offset,
+    endOffset: row.end_offset,
+    lexicalRank: Number(row.lexical_rank ?? 0),
   }));
 }
 
