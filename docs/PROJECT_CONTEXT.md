@@ -100,13 +100,24 @@ as `RAG_PROMPT_VERSION`.
 The current version is:
 
 ```text
-rag-grounded-v5
+rag-grounded-v6
 ```
 
-Version `rag-grounded-v5` uses grounded partial answers: when the context
-mentions a term but does not explicitly define it, the assistant should say the
-term is not explicitly defined in the found fragments and summarize only the
-available mentions instead of adding a definition from general model knowledge.
+Version `rag-grounded-v6` introduces a clear two-level hierarchy:
+
+- **Base contract** (all modes): format-only invariants — Russian language,
+  1–4 sentence answers, no hedging words, list/table handling, and the exact
+  decline phrase contract. The base contract does **not** specify the knowledge
+  source; that belongs to the mode policy.
+- **Mode policy** (per-mode): each mode begins with an explicit
+  `Источник знаний:` declaration that fully and unambiguously defines what
+  knowledge sources are allowed, when to decline, and how to handle partial
+  context. Mode policies are self-contained — no global rule contradicts them.
+
+This removes the architectural conflict in v5 where the global rule "do not use
+external knowledge" contradicted the tutor mode's "Общее пояснение:" allowance.
+In v6 the tutor exception is explicit, bounded to the named block, and
+conditioned on context relevance.
 
 Chat requests support `answerMode`:
 
@@ -268,7 +279,7 @@ The `/eval` page also supports a Mode Matrix report that compares answer modes
 on accuracy, decline rate, confusion matrix, policy/model declines, and average
 answer support score.
 
-Current stable seed benchmark after grounded partial-answer prompt changes:
+Current stable seed benchmark (rag-grounded-v6):
 
 - `answerability_accuracy=1.000`
 - `tp=12`
@@ -276,13 +287,31 @@ Current stable seed benchmark after grounded partial-answer prompt changes:
 - `fp=0`
 - `fn=0`
 
-Current generated user-KB smoke report after capped query-overlap scoring:
+Current generated user-KB smoke report:
 
-- `answerability_accuracy=1.000`
-- `tp=12`
+- `answerability_accuracy=0.867`
+- `tp=10`
 - `tn=3`
 - `fp=0`
-- `fn=0`
+- `fn=2`
+
+The fn=2 in generated eval are policy-level declines on code-chunk questions
+("classmodel" extracted from PyTorch code) from documents added after the v5
+eval baseline. These are not prompt regressions; they reflect the generated
+eval generator producing low-quality questions from code-heavy chunks.
+
+Current Mode Matrix (rag-grounded-v6, seed benchmark):
+
+| Mode | accuracy | fp | fn | decline |
+|---------|----------|----|----|---------|
+| strict | 1.000 | 0 | 0 | 25.0% |
+| balanced | 1.000 | 0 | 0 | 25.0% |
+| tutor | 0.938 | 1 | 0 | 18.8% |
+
+Improvement over v5: strict fixed fp=1→0; tutor improved fp=2→1.
+The remaining tutor fp=1 is seed-016 ("finalStatusModels in METRICS docs"),
+an unanswerable case where tutor's general-knowledge allowance causes the
+model to answer instead of decline on a borderline-relevance query.
 
 ## Architecture UI
 
@@ -349,20 +378,23 @@ chunks to make grounding easier to inspect.
 
 1. Quality + eval foundation.
    - Keep eval first before adding more product features.
-   - Expand eval cases.
-   - Mode Matrix exists for comparing `strict`, `balanced`, and `tutor` on the
-     seed benchmark.
-   - Keep categories: `answerable`, `unanswerable`, `tricky`, `exact`,
-     `multi-hop`.
+   - Prompt hierarchy is now clean (rag-grounded-v6): base contract is
+     format-only; mode policy owns grounding scope and knowledge sources.
+   - Mode Matrix: strict=1.000, balanced=1.000, tutor=0.938 on seed benchmark.
+   - Remaining tutor fp=1 (seed-016, unanswerable border case): consider
+     adding a stronger "no relevant context → decline" signal in tutor policy
+     or adding seed-016 as an explicit tutor unanswerable test case.
    - Category summaries, failed cases, `bestScore`, `decision`,
      `guardrailReason`, answer support, and retrieval trace are visible.
 2. Generated eval for current user documents.
    - Foundation exists through `eval:generate` and `eval:generated`.
    - Generated eval v2 now includes harder categories: `definition`,
      `mentioned-not-defined`, `partial`, `multi-chunk`, and `tutor-broad`.
+   - fn=2 in generated eval are from code-chunk keywords ("classmodel") that
+     produce low-quality questions. Consider filtering chunks that are mostly
+     code before question generation.
    - Next: improve question wording diversity and optionally add an
      LLM-generator with strict JSON validation.
-   - Later: optionally use an LLM generator with strict JSON validation.
 3. Retrieval Debug panel.
    - Chat and eval failed-case debug now show vector, lexical, merged, reranked,
      and final candidates. Next: add filtering/search within trace and compare
