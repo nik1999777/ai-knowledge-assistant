@@ -37,8 +37,8 @@ export function useDocumentsPage() {
           : "";
       const uploadSummary =
         json.totalDocuments && json.totalDocuments > 1
-          ? `Архив успешно загружен. Документов: ${json.totalDocuments}. Chunks: ${json.chunks}. Символов: ${json.characters}.${warnings}`
-          : `Файл "${json.title}" успешно загружен. Chunks: ${json.chunks}. Символов: ${json.characters}.${warnings}`;
+          ? `Архив загружен, идёт индексация. Документов: ${json.totalDocuments}.${warnings}`
+          : `Файл "${json.title}" загружен, идёт индексация...${warnings}`;
 
       setUploadMessage(uploadSummary);
       setSelectedFile(null);

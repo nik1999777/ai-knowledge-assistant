@@ -1,4 +1,4 @@
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import { Link } from "react-router-dom";
 import type { DocumentListItem } from "../types/documents";
 
@@ -51,7 +51,13 @@ export function DocumentsPanel({
                 </DocumentInfo>
 
                 <Actions>
-                  <OpenLink to={`/documents/${doc.docId}`}>Открыть</OpenLink>
+                  {doc.ingestionStatus === "processing" ? (
+                    <StatusBadge $status="processing">Индексация...</StatusBadge>
+                  ) : doc.ingestionStatus === "failed" ? (
+                    <StatusBadge $status="failed">Ошибка</StatusBadge>
+                  ) : (
+                    <OpenLink to={`/documents/${doc.docId}`}>Открыть</OpenLink>
+                  )}
                   <DeleteButton onClick={() => onDelete(doc.docId)}>
                     Удалить
                   </DeleteButton>
@@ -189,4 +195,34 @@ const DeleteButton = styled.button`
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+`;
+
+const pulse = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+`;
+
+const StatusBadge = styled.span<{ $status: "processing" | "failed" }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  ${({ $status }) =>
+    $status === "processing"
+      ? `
+        background: rgba(234, 179, 8, 0.12);
+        color: #ca8a04;
+        border: 1px solid rgba(234, 179, 8, 0.3);
+        animation: ${pulse} 1.5s ease-in-out infinite;
+      `
+      : `
+        background: var(--danger-soft);
+        color: var(--danger);
+        border: 1px solid #fecaca;
+      `}
 `;

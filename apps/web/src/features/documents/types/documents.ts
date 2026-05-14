@@ -1,6 +1,9 @@
+export type IngestionStatus = "processing" | "indexed" | "failed";
+
 export type DocumentListItem = {
   docId: string;
   title: string;
+  ingestionStatus: IngestionStatus;
 };
 
 export type DocumentsResponse = {
