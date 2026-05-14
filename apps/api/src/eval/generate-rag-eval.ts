@@ -135,11 +135,15 @@ async function main() {
   );
 }
 
+const MIN_PROSE_RATIO = 0.4;
+
 function isUsefulChunk(chunk: TextChunk) {
   const prose = toEvalProse(chunk.text);
+  const proseRatio = chunk.text.length > 0 ? prose.length / chunk.text.length : 0;
 
   return (
     prose.length >= MIN_CHUNK_LENGTH &&
+    proseRatio >= MIN_PROSE_RATIO &&
     /[A-Za-zА-Яа-я0-9]/u.test(prose) &&
     selectKeywords(prose, 2).length >= 2
   );
@@ -351,9 +355,12 @@ function selectBalancedCases(
 function selectKeywords(text: string, limit: number) {
   const counts = new Map<string, number>();
   const prose = toEvalProse(text);
+  const proseLower = prose.toLocaleLowerCase();
 
   for (const token of extractInlineCodeTerms(text)) {
-    addKeywordScore(counts, token, 8);
+    if (proseLower.includes(token)) {
+      addKeywordScore(counts, token, 4);
+    }
   }
 
   const proseTokens = tokenizeKeywordCandidates(prose);
@@ -464,7 +471,7 @@ function isKeywordCandidate(token: string) {
   return token.length >= 4 && token.length <= 32;
 }
 
-function scoreKeywordCandidate(token: string, frequency: number) {
+function scoreKeywordCandidate(token: string, _frequency: number) {
   if (/^[a-z][a-z0-9_-]*$/u.test(token)) {
     return /[0-9_-]/u.test(token) ? 3 : 2;
   }
@@ -514,10 +521,15 @@ function isCodeLikeLine(line: string) {
   }
 
   if (
-    /^(import|from|const|let|var|function|class|return|if|else|for|while|try|catch|break|continue)\b/.test(
+    /^(import|from|const|let|var|function|class|return|if|else|for|while|try|catch|break|continue|def|self|super|pass|elif|lambda|yield|raise|assert|async|await)\b/.test(
       line,
     )
   ) {
+    return true;
+  }
+
+  // Python class/function definition: word(args):
+  if (/^\w[\w.]*\s*\(.*\)\s*:/.test(line)) {
     return true;
   }
 

@@ -289,16 +289,16 @@ Current stable seed benchmark (rag-grounded-v6):
 
 Current generated user-KB smoke report:
 
-- `answerability_accuracy=0.867`
-- `tp=10`
+- `answerability_accuracy=1.000`
+- `tp=12`
 - `tn=3`
 - `fp=0`
-- `fn=2`
+- `fn=0`
 
-The fn=2 in generated eval are policy-level declines on code-chunk questions
-("classmodel" extracted from PyTorch code) from documents added after the v5
-eval baseline. These are not prompt regressions; they reflect the generated
-eval generator producing low-quality questions from code-heavy chunks.
+Previously fn=2 ("classmodel" from PyTorch code chunks). Fixed by improving
+`isCodeLikeLine` to detect Python keywords/patterns, requiring inline-code
+keyword terms to also appear in prose, and adding a prose-ratio guard in
+`isUsefulChunk`.
 
 Current Mode Matrix (rag-grounded-v6, seed benchmark):
 
