@@ -9,7 +9,7 @@ import {
   parseUploadedDocuments,
   type ParsedDocument,
 } from "../../services/document-parser.service.js";
-import { getEmbedding } from "../../services/embeddings.service.js";
+import { getDocumentEmbedding } from "../../services/embeddings.service.js";
 import { saveChunks } from "../../clients/qdrant.client.js";
 import { createAppError } from "../../utils/app-error.js";
 
@@ -76,7 +76,7 @@ async function ingestParsedDocument(input: {
   }
 
   const embeddings = await Promise.all(
-    chunks.map((chunk) => getEmbedding(chunk.text)),
+    chunks.map((chunk) => getDocumentEmbedding(chunk.text)),
   );
 
   const scope = input.documentScope ?? "user";

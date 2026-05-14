@@ -1,7 +1,7 @@
 import { env } from "../config/env.js";
 import { postOllamaJson } from "../clients/ollama.client.js";
 
-export async function getEmbedding(text: string): Promise<number[]> {
+async function embed(text: string): Promise<number[]> {
   const data = await postOllamaJson<{ embedding: number[] }>(
     "/api/embeddings",
     {
@@ -13,3 +13,13 @@ export async function getEmbedding(text: string): Promise<number[]> {
 
   return data.embedding;
 }
+
+export function getQueryEmbedding(text: string): Promise<number[]> {
+  return embed(`search_query: ${text}`);
+}
+
+export function getDocumentEmbedding(text: string): Promise<number[]> {
+  return embed(`search_document: ${text}`);
+}
+
+export const getEmbedding = getDocumentEmbedding;

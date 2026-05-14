@@ -5,7 +5,7 @@ import {
   getExistingDocumentIdsByScope,
   searchDocumentChunksLexical,
 } from "../../repositories/documents.repository.js";
-import { getEmbedding } from "../../services/embeddings.service.js";
+import { getQueryEmbedding } from "../../services/embeddings.service.js";
 import {
   LLM_GENERATION_OPTIONS,
   streamLLM,
@@ -200,7 +200,7 @@ async function buildRagChatContext(
   options: { documentScope: DocumentScope },
 ): Promise<RagChatContext> {
   const { result: questionEmbedding, ms: embeddingMs } = await measureTime(() =>
-    getEmbedding(input.question),
+    getQueryEmbedding(input.question),
   );
 
   const { result: rawResults, ms: searchMs } = await measureTime(() =>

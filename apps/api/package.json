@@ -9,7 +9,8 @@
     "eval:generate": "tsx src/eval/generate-rag-eval.ts",
     "eval:generated": "tsx src/eval/run-generated-rag-eval.ts",
     "eval:modes": "tsx src/eval/mode-matrix-rag-eval.ts",
-    "eval:seed": "tsx src/eval/seed-rag-eval.ts"
+    "eval:seed": "tsx src/eval/seed-rag-eval.ts",
+    "reindex": "tsx src/scripts/reindex-qdrant.ts"
   },
   "keywords": [],
   "author": "",
