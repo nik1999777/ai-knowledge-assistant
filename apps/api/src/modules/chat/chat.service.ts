@@ -6,6 +6,7 @@ import {
   searchDocumentChunksLexical,
 } from "../../repositories/documents.repository.js";
 import { getQueryEmbedding } from "../../services/embeddings.service.js";
+import { rewriteQueryForSearch } from "../../services/query-rewrite.service.js";
 import {
   LLM_GENERATION_OPTIONS,
   streamLLM,
@@ -39,6 +40,8 @@ type StreamChunkHandler = (chunk: string) => void;
 type RagChatContext = {
   bestScore: number;
   decisionThreshold: number;
+  rewriteMs: number;
+  searchQuery: string;
   embeddingMs: number;
   searchMs: number;
   domainEvidence: number;
@@ -76,6 +79,7 @@ export async function streamChatWithKnowledgeBase(
         sources: [],
         bestScore: context.bestScore,
         timing: {
+          rewriteMs: context.rewriteMs,
           embeddingMs: context.embeddingMs,
           searchMs: context.searchMs,
           llmMs: 0,
@@ -97,6 +101,7 @@ export async function streamChatWithKnowledgeBase(
           rerankedCount: context.rerankedCount,
           retrievalTrace: context.retrievalTrace,
           vectorCount: context.vectorCount,
+          searchQuery: context.searchQuery,
         },
       },
     };
@@ -123,6 +128,7 @@ export async function streamChatWithKnowledgeBase(
       sources: context.sources,
       bestScore: context.bestScore,
       timing: {
+        rewriteMs: context.rewriteMs,
         embeddingMs: context.embeddingMs,
         searchMs: context.searchMs,
         llmMs,
@@ -144,6 +150,7 @@ export async function streamChatWithKnowledgeBase(
         rerankedCount: context.rerankedCount,
         retrievalTrace: context.retrievalTrace,
         vectorCount: context.vectorCount,
+        searchQuery: context.searchQuery,
       },
     },
   };
@@ -199,8 +206,12 @@ async function buildRagChatContext(
   input: ChatInput,
   options: { documentScope: DocumentScope },
 ): Promise<RagChatContext> {
+  const { result: searchQuery, ms: rewriteMs } = await measureTime(() =>
+    rewriteQueryForSearch(input.question),
+  );
+
   const { result: questionEmbedding, ms: embeddingMs } = await measureTime(() =>
-    getQueryEmbedding(input.question),
+    getQueryEmbedding(searchQuery),
   );
 
   const { result: rawResults, ms: searchMs } = await measureTime(() =>
@@ -254,7 +265,7 @@ async function buildRagChatContext(
   }));
 
   const lexicalChunks = await searchDocumentChunksLexical(
-    input.question,
+    searchQuery,
     TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER,
     options.documentScope,
   );
@@ -280,6 +291,8 @@ async function buildRagChatContext(
   return {
     bestScore,
     decisionThreshold: ANSWER_SCORE_THRESHOLD,
+    rewriteMs,
+    searchQuery,
     embeddingMs,
     searchMs,
     domainEvidence,

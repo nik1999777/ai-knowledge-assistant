@@ -154,6 +154,13 @@ export function AnswerSection({ data }: AnswerSectionProps) {
                   <TimingLabel>Guardrail reason</TimingLabel>
                   <strong>{guardrailReasonLabel}</strong>
                 </CompactItem>
+
+                {data.debug.searchQuery ? (
+                  <CompactItem style={{ gridColumn: "1 / -1" }}>
+                    <TimingLabel>Search query (rewritten)</TimingLabel>
+                    <strong>{data.debug.searchQuery}</strong>
+                  </CompactItem>
+                ) : null}
               </CompactGrid>
 
               {data.debug.answerSupport ? (
@@ -174,6 +181,12 @@ export function AnswerSection({ data }: AnswerSectionProps) {
               ) : null}
 
               <TimingStrip>
+                {data.timing.rewriteMs !== undefined ? (
+                  <TimingPill>
+                    <TimingLabel>Rewrite</TimingLabel>
+                    <strong>{data.timing.rewriteMs} ms</strong>
+                  </TimingPill>
+                ) : null}
                 <TimingPill>
                   <TimingLabel>Embedding</TimingLabel>
                   <strong>{data.timing.embeddingMs} ms</strong>

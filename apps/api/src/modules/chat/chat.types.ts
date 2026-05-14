@@ -19,6 +19,7 @@ export type RagSource = {
 };
 
 export type RagTiming = {
+  rewriteMs?: number;
   embeddingMs: number;
   searchMs: number;
   llmMs: number;
@@ -72,6 +73,7 @@ export type RagDebug = {
   domainEvidence?: number;
   guardrailReason?: string;
   vectorCount?: number;
+  searchQuery?: string;
 };
 
 export type ChatResponse = {
