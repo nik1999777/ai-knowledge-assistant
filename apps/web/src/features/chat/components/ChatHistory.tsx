@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import { MarkdownAnswer } from "../../../shared/components/MarkdownAnswer";
 import { AnswerSection } from "./AnswerSection";
 import type { ChatExchange } from "../types/chat";
 
@@ -20,7 +21,7 @@ export function ChatHistory({ exchanges }: ChatHistoryProps) {
               <AssistantMessage>
                 <StatusText>
                   {exchange.streamedAnswer?.trim() ? (
-                    exchange.streamedAnswer
+                    <MarkdownAnswer content={exchange.streamedAnswer} />
                   ) : (
                     "Думаю..."
                   )}

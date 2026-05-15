@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
+import { MarkdownAnswer } from "../../../shared/components/MarkdownAnswer";
 import type { ChatResponse, RetrievalTraceItem } from "../types/chat";
 
 type AnswerSectionProps = {
@@ -40,7 +41,7 @@ export function AnswerSection({ data }: AnswerSectionProps) {
   return (
     <>
       <AnswerBubble>
-        <AnswerText>{data.answer}</AnswerText>
+        <MarkdownAnswer content={data.answer} />
 
         <SummaryRow>
           <MetricPill>
@@ -342,13 +343,6 @@ const SectionDescription = styled.p`
   line-height: 1.7;
 `;
 
-const AnswerText = styled.p`
-  line-height: 1.7;
-  font-size: 15px;
-  margin-top: 0;
-  margin-bottom: 14px;
-  color: var(--text-primary);
-`;
 
 const SummaryRow = styled.div`
   display: flex;
