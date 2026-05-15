@@ -6,7 +6,7 @@ const PROMPT = (question: string, previousQuestion?: string) => {
     ? `Previous question: ${previousQuestion}\n`
     : "";
   return `Extract 3-7 key search terms from the question below for database retrieval.
-If the question references something from the previous question (e.g. "it", "this", "that"), resolve the reference and include those terms.
+If the question contains pronouns or references (e.g. "it", "this", "that", "он", "она", "оно", "они", "это", "тот", "та", "то", "его", "её", "их"), resolve them using the previous question and replace with the actual subject.
 Return ONLY the terms separated by spaces. No explanations, no punctuation, no numbering.
 
 ${context}Question: ${question}
