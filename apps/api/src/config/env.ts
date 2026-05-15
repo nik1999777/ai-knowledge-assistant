@@ -8,6 +8,9 @@ const envSchema = z.object({
   // LLM provider: "ollama" (default, local) or "openai"
   LLM_PROVIDER: z.enum(["ollama", "openai"]).default("ollama"),
 
+  // Optional: separate provider for query rewriting (defaults to LLM_PROVIDER)
+  REWRITE_PROVIDER: z.enum(["ollama", "openai"]).optional(),
+
   // Ollama — used when LLM_PROVIDER=ollama
   OLLAMA_URL: z.url().default("http://localhost:11434"),
   OLLAMA_LLM_MODEL: z.string().default("llama3"),

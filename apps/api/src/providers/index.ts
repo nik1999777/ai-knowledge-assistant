@@ -3,10 +3,12 @@ import type { LLMProvider } from "./llm.provider.js";
 import { OllamaProvider } from "./ollama.provider.js";
 import { OpenAIProvider } from "./openai.provider.js";
 
-function createProvider(modelOverride?: string): LLMProvider {
-  if (env.LLM_PROVIDER === "openai") {
+type ProviderType = "ollama" | "openai";
+
+function createProvider(type: ProviderType, modelOverride?: string): LLMProvider {
+  if (type === "openai") {
     const apiKey = env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER=openai");
+    if (!apiKey) throw new Error("OPENAI_API_KEY is required when provider=openai");
 
     return new OpenAIProvider(
       modelOverride ?? env.OPENAI_LLM_MODEL,
@@ -25,11 +27,14 @@ function createProvider(modelOverride?: string): LLMProvider {
 }
 
 // Main provider for generation + embeddings.
-export const llmProvider: LLMProvider = createProvider();
+export const llmProvider: LLMProvider = createProvider(env.LLM_PROVIDER);
 
-// Separate provider for query rewriting — uses REWRITE_MODEL if set.
-export const rewriteProvider: LLMProvider = env.REWRITE_MODEL
-  ? createProvider(env.REWRITE_MODEL)
-  : llmProvider;
+// Rewrite provider — can be a different type and/or model from the main provider.
+// Example: LLM_PROVIDER=ollama + REWRITE_PROVIDER=openai + OPENAI_API_KEY=sk-...
+const rewriteProviderType = env.REWRITE_PROVIDER ?? env.LLM_PROVIDER;
+export const rewriteProvider: LLMProvider =
+  rewriteProviderType === env.LLM_PROVIDER && !env.REWRITE_MODEL
+    ? llmProvider
+    : createProvider(rewriteProviderType, env.REWRITE_MODEL);
 
 export type { LLMProvider };
