@@ -19,12 +19,12 @@ into the local knowledge base.
 
 ## Local Stack
 
-- Frontend: React + Vite
-- Backend: Fastify
-- Metadata/history/search: Postgres
+- Frontend: React + Vite + styled-components + react-markdown + remark-gfm
+- Backend: Fastify (TypeScript)
+- Metadata / history / FTS: Postgres
 - Vector search: Qdrant
-- Embeddings: Ollama `nomic-embed-text`
-- Generation: Ollama `llama3`
+- Embeddings: Ollama `nomic-embed-text` (asymmetric — see below)
+- Generation: Ollama (model configured via `OLLAMA_LLM_MODEL`)
 
 ## Run Commands
 
@@ -48,193 +48,181 @@ cd apps/web
 npm run dev
 ```
 
-Important: Vite 7 requires Node `20.19+` or `22.12+`. Older Node versions such
-as `20.10.0` can fail with `crypto.hash is not a function`.
+Important: Vite 7 requires Node `20.19+` or `22.12+`. Older Node versions
+can fail with `crypto.hash is not a function`.
 
 ## Main Pages
 
-- `/` or chat page: ask questions against uploaded user documents.
-  The composer includes answer modes: `Strict`, `Balanced`, and `Tutor`.
-- `/documents`: list, upload, search, and delete user documents.
-- `/documents/:docId`: inspect document details and chunks.
-- `/architecture`: interactive architecture guide.
-- `/eval`: inspect the latest eval report.
+- `/` — chat page: ask questions against uploaded user documents.
+  Composer includes answer modes: `Strict`, `Balanced`, `Tutor`.
+- `/documents` — list, upload, search, and delete user documents.
+- `/documents/:docId` — inspect document details, chunks, and readable markdown.
+- `/architecture` — interactive architecture guide.
+- `/eval` — inspect the latest eval report.
 
 ## Core Pipeline
 
+### Ingestion (async)
+
 1. User uploads `.txt`, `.md`, `.csv`, `.pdf`, `.docx`, or `.zip`.
-   ZIP uploads are treated as archive imports: supported text files inside,
-   such as Markdown/CSV exports with folders, are indexed as separate documents
-   with their archive path stored as `originalFileName`.
-2. Backend parses the document.
-   Markdown link targets are normalized away for indexing/display, so
-   `[visible title](long/path-or-url)` contributes the visible title without
-   polluting retrieval with long encoded paths.
-   Standalone local `.md` links are treated as archive navigation and removed
-   from indexed text, so table-of-contents pages do not outrank actual content.
-   Archive Markdown files that are mostly standalone local links and headings
-   are skipped as navigation-only pages.
-   Markdown link parsing tolerates exported file names with unbalanced
-   parentheses when the target is still a local `.md` path.
-3. Backend chunks text into retrieval units.
-   Each chunk carries `chunkIndex`, `chunkLen`, `section`, `startOffset`, and
-   `endOffset` for source inspection.
-4. Ollama creates embeddings for chunks.
-5. Postgres stores document metadata, raw text for inspection, normalized
-   indexed text, FTS `search_vector`, chat sessions, chat messages, sources,
-   timing, and debug JSON.
-6. Qdrant stores chunk vectors and payload.
-7. Chat builds a RAG context through hybrid retrieval.
-8. Decision policy chooses answer or safe decline.
-9. Ollama receives grounded context with source title, section, chunk index, and
-   chunk text, then streams generation through SSE.
-10. If the model emits the decline phrase with extra text around it, backend
-    normalizes the saved answer to the exact decline contract.
-11. Answer, sources, timing, answer mode, and debug are saved to chat history.
+   ZIP uploads are treated as archive imports.
+2. Backend parses and normalizes the document synchronously:
+   - Markdown link targets are cleaned for indexing.
+   - Navigation-only pages (table-of-contents) are skipped.
+3. Backend chunks text into retrieval units with `chunkIndex`, `chunkLen`,
+   `section`, `startOffset`, `endOffset`.
+4. Document record is created in Postgres with `ingestion_status = 'processing'`.
+   API returns immediately with `docId`.
+5. **Background:** Ollama creates embeddings using `search_document:` prefix
+   (asymmetric embeddings). Chunks are saved to `document_chunks` table.
+   Qdrant receives vectors and payloads.
+6. On success: `ingestion_status → 'indexed'`. On failure: `'failed'`.
+7. Frontend polls every 2s while any document is in `processing` state.
+   Status badge: yellow pulsing "Индексация..." → "Открыть" or red "Ошибка".
 
-## Prompt Versioning
+### Chat / RAG
 
-The grounded RAG prompt is versioned in `apps/api/src/services/prompt.service.ts`
-as `RAG_PROMPT_VERSION`.
+1. **Query rewriting** — `rewriteQueryForSearch(question)` calls Ollama with
+   `temperature=0, num_predict=40` to extract 3–7 key search terms.
+   Falls back to original question on any error. Timing stored as `rewriteMs`.
+2. **Embedding** — rewritten query is embedded with `search_query:` prefix
+   (asymmetric: different prefix than document embeddings).
+3. **Vector search** — Qdrant returns top-K candidates.
+4. **Lexical search** — Postgres FTS on `document_chunks` using rewritten query.
+5. **RRF fusion** — Reciprocal Rank Fusion merges vector and lexical results.
+6. **Rerank** — local rerank with token overlap, title/section overlap, phrase
+   bonus, and short chunk penalty.
+7. **Decision policy** — checks `bestScore`, `domainEvidence`, `declineThreshold`,
+   `answerThreshold`. Declines without calling LLM if evidence is weak.
+8. **Generation** — Ollama receives system prompt (rules + mode policy) and
+   user prompt (context + question + "Ответ:") as separate parameters. Streams
+   via SSE. Preamble filter strips any echoed instruction headers from stream.
+9. **Post-processing** — `stripAnswerPreamble` + `normalizeDeclineAnswer`.
+10. Answer, sources, timing, debug saved to Postgres chat history.
 
-The current version is:
+## Asymmetric Embeddings
 
-```text
-rag-grounded-v6
+`nomic-embed-text` supports instructional prefixes that improve retrieval quality:
+
+- Documents are embedded as `search_document: {text}`
+- Queries are embedded as `search_query: {text}` (after rewriting)
+
+Functions:
+- `getDocumentEmbedding(text)` — used during ingestion and reindex
+- `getQueryEmbedding(text)` — used during chat retrieval
+- `getEmbedding` is aliased to `getDocumentEmbedding`
+
+Reindex script: `npm run reindex [scope]` — re-embeds all documents in a scope
+using stored chunks from `document_chunks` table.
+
+## Query Rewriting
+
+Before retrieval, a fast LLM call extracts key search terms from the user's
+natural-language question. This improves both vector embedding quality and FTS
+precision by removing conversational noise.
+
+- Service: `apps/api/src/services/query-rewrite.service.ts`
+- Uses `OLLAMA_LLM_MODEL` with `temperature=0, seed=42, num_predict=40`
+- Falls back to original question on any error
+- `searchQuery` (rewritten) is stored in `debug.searchQuery`
+- Visible in the frontend debug panel
+
+## Prompt Architecture
+
+Prompt version: `rag-grounded-v7`
+
+Instructions and context are sent as **separate** Ollama parameters:
+
+```
+system: <rules + mode policy>    ← model never echoes this
+prompt: Документы:\n{context}\n\nВопрос: {question}\n\nОтвет:
 ```
 
-Version `rag-grounded-v6` introduces a clear two-level hierarchy:
+This prevents the model from echoing "БАЗОВЫЙ КОНТРАКТ / РЕЖИМ" headers in
+the answer. `stripAnswerPreamble` + `createPreambleFilter` remain as fallback.
 
-- **Base contract** (all modes): format-only invariants — Russian language,
-  1–4 sentence answers, no hedging words, list/table handling, and the exact
-  decline phrase contract. The base contract does **not** specify the knowledge
-  source; that belongs to the mode policy.
-- **Mode policy** (per-mode): each mode begins with an explicit
-  `Источник знаний:` declaration that fully and unambiguously defines what
-  knowledge sources are allowed, when to decline, and how to handle partial
-  context. Mode policies are self-contained — no global rule contradicts them.
+System prompt structure (per mode):
+- **Base rules**: Russian language, concise answer, no hedging, markdown formatting.
+- **Mode policy**: `strict` / `balanced` / `tutor` (self-contained grounding scope).
 
-This removes the architectural conflict in v5 where the global rule "do not use
-external knowledge" contradicted the tutor mode's "Общее пояснение:" allowance.
-In v6 the tutor exception is explicit, bounded to the named block, and
-conditioned on context relevance.
-
-Chat requests support `answerMode`:
-
-- `strict`: answer only when context explicitly contains a direct answer;
-  otherwise decline.
-- `balanced`: default grounded partial-answer mode. Summarize what is present,
-  state what is missing, and do not use external knowledge.
-- `tutor`: first answer from documents, then optionally add a clearly separated
-  general explanation when retrieved context is related but partial.
-
-Each chat response stores `debug.promptVersion` and `debug.answerMode`. Eval
-results also record the prompt version so quality reports can be tied to the
-prompt behavior that produced them. Current eval runs use `balanced`.
+Answer modes:
+- `strict`: direct answer from context only; otherwise decline.
+- `balanced`: grounded partial-answer; state what is present and what is missing.
+- `tutor`: "По документам:" from context, then "Общее пояснение:" from general
+  knowledge only if context is at least partially related.
 
 ## Generation Options
 
-Ollama generation is configured explicitly for repeatable local eval:
+Repeatable local eval via explicit Ollama options:
 
 - `OLLAMA_LLM_TEMPERATURE`, default `0`
 - `OLLAMA_LLM_SEED`, default `42`
 
-These values are passed through Ollama `/api/generate` `options` for both
-streaming chat and non-streaming LLM calls. Each chat/eval debug payload stores
-them as `debug.generationOptions`.
+Stored as `debug.generationOptions` in each chat response.
 
-## RAG Engineering Principles
+## Markdown Rendering
 
-Do not improve the assistant by accumulating document-specific `if` statements
-or narrow prompt rules for particular wording patterns. This project should work
-for arbitrary user uploads, so fixes must stay portable across domains.
+All LLM answers and document "Readable" view are rendered as markdown:
 
-Avoid patterns like:
-
-- `if document text contains "roles:", ask a roles-specific question`
-- prompt rules for one phrasing such as "if the question asks exactly X..."
-- code branches tied to current sample documents, titles, sections, or business
-  vocabulary
-
-Prefer production-style changes:
-
-- general retrieval, ranking, chunking, and metadata contracts
-- compact prompt policies that express invariant behavior
-- prompt/version/generation metadata in debug reports
-- eval cases that expose failures without hardcoding the fix
-- deterministic or validated generators with broad heuristics, not domain rules
-
-If a bug appears only for one document shape, first ask what general capability
-is missing: better chunk metadata, source context, citation contract, parser
-output, retrieval trace, or eval coverage. Only add a special case if it is a
-well-named, documented, domain-independent parser/format rule.
+- Library: `react-markdown` + `remark-gfm`
+- Component: `apps/web/src/shared/components/MarkdownAnswer.tsx`
+- Applied to: final answers, streaming answers, document detail readable view
+- Supports: code blocks (dark background), tables, lists, headers, blockquote,
+  inline code, bold/italic
 
 ## Retrieval
 
-Retrieval is hybrid:
+Hybrid retrieval pipeline:
 
-- Vector search through Qdrant.
-- Lexical search through Postgres FTS.
-- Lexical ranking uses relaxed OR-match score as the base for all matching
-  documents, with strict AND-match as a bonus. This avoids burying strong
-  title/body matches whose strict rank is numerically tiny.
-- Deduplication by `docId:chunkIndex`.
-- Reciprocal Rank Fusion (RRF).
-- Local rerank with token overlap, title/section overlap, phrase bonus, and short
-  chunk penalty.
-- Query token coverage does not use a hand-maintained stop-word list. Verbose
-  questions are handled by capping the overlap denominator, so extra wording in
-  the question does not dilute strong matches indefinitely.
-- Section overlap is treated as scoped metadata: it is strongest when the
-  document title also matches the query, so generic section names do not outrank
-  the intended document.
+1. Vector search — Qdrant, asymmetric query embedding
+2. Lexical search — Postgres FTS on `document_chunks` table, rewritten query
+3. Deduplication by `docId:chunkIndex`
+4. RRF fusion (k=60)
+5. Local rerank — token overlap, title/section overlap, phrase bonus, short chunk penalty
 
-Important source debug fields:
-
-- `origin`: `vector`, `lexical`, or `hybrid`.
-- `vectorRank` / `vectorScore`: raw Qdrant rank and score.
-- `lexicalRank` / `lexicalScore`: raw lexical rank and score.
-- `rrfScore`: normalized RRF signal.
-- `finalScore`: score after local rerank.
-- `bestScore`: final score of the top source.
-- `answerSupport`: heuristic answer audit with `status`, `score`,
-  `matchedTerms`, and `missingTerms`. It compares generated answer tokens
-  against retrieved source text and is intended for debugging, not as a formal
-  proof of factuality.
-- `retrievalTrace`: compact per-stage retrieval trace for chat/history debug:
-  `vector`, `lexical`, `merged`, `reranked`, and `final`. Each stage stores
-  candidate titles, chunk indexes, ranks/scores, and a short preview so the UI
-  can explain why the final context was selected.
+Source debug fields:
+- `origin`: `vector`, `lexical`, or `hybrid`
+- `vectorRank` / `vectorScore` — raw Qdrant rank and score
+- `lexicalRank` / `lexicalScore` — raw lexical rank and score
+- `rrfScore` — normalized RRF signal
+- `finalScore` — score after local rerank
+- `bestScore` — final score of top source
+- `answerSupport` — heuristic answer audit: `status`, `score`, `matchedTerms`, `missingTerms`
+- `retrievalTrace` — per-stage trace: `vector`, `lexical`, `merged`, `reranked`, `final`
+- `searchQuery` — rewritten query used for retrieval
 
 ## Decision Policy
 
-The assistant should answer only when retrieved evidence is strong enough.
+Main signals: `bestScore`, `declineThreshold`, `answerThreshold`, `domainEvidence`.
 
-Main signals:
-
-- `bestScore`
-- `declineThreshold`
-- `answerThreshold`
-- `domainEvidence`
-- source count and hybrid evidence
-
-If evidence is weak, the API returns:
-
-```text
+If evidence is weak, returns exactly:
+```
 Я не знаю на основе предоставленных данных.
 ```
-
 without calling the LLM.
 
 ## Document Scope
 
 Documents are isolated by `documentScope`:
+- `user` — normal user documents
+- `eval` — stable benchmark documents
 
-- `user`: normal user documents.
-- `eval`: stable benchmark documents.
+## Storage
 
-The normal chat and `/documents` use `user` scope. Seed eval uses `eval` scope.
-Both Postgres and Qdrant queries must apply the correct scope.
+### Postgres Tables
+
+- `documents` — metadata, `text_content`, `raw_text_content`, `search_vector`,
+  `ingestion_status` (`processing` / `indexed` / `failed`)
+- `document_chunks` — `doc_id`, `chunk_index`, `chunk_text`, `section`,
+  `chunk_len`, `start_offset`, `end_offset`
+- `chat_sessions` — session metadata
+- `chat_exchanges` — question, answer, sources, timing, debug JSON
+
+### Qdrant
+
+Collection per scope (`user`, `eval`). Each point has vector + payload:
+`docId`, `title`, `sourceType`, `text`, `chunkIndex`, `chunkLen`,
+`section`, `startOffset`, `endOffset`.
 
 ## Eval
 
@@ -242,190 +230,96 @@ Commands:
 
 ```bash
 cd apps/api
-npm run eval:seed
-npm run eval:generate
-npm run eval:generated
-npm run eval:modes
+npm run eval:seed      # seed benchmark
+npm run eval:generate  # build generated questions from user docs
+npm run eval:generated # run generated eval against user scope
+npm run eval:modes     # mode matrix (strict / balanced / tutor)
 ```
 
-- `eval:seed`: reindexes stable seed docs into `documentScope=eval`, runs
-  `questions.seed.json`, and writes `last-seed-report.json`.
-- `eval:generate`: builds `questions.generated.json` from current user
-  document chunks.
-- `eval:generated`: regenerates `questions.generated.json`, runs those cases
-  against `documentScope=user`, and writes `last-generated-report.json`.
-- `eval:modes`: reindexes stable seed docs once, runs `questions.seed.json`
-  with `strict`, `balanced`, and `tutor`, and writes
-  `last-mode-matrix-report.json`.
+Current seed benchmark (`rag-grounded-v7`):
+- `answerability_accuracy = 0.938`
+- `tp=11, tn=4, fp=0, fn=1`
 
-Generated eval foundation is deterministic/extractive: it selects useful chunks,
-builds answerable questions from chunk keywords, stores expected answer/source
-keywords, evidence quotes, and chunk spans, then adds a few stable unanswerable
-cases. It also creates category-aware generated cases for definitions,
-mentioned-but-not-defined terms, partial questions, multi-chunk questions, and
-tutor-style broad explanation questions. It does not use an LLM to author
-questions yet.
+(Previous v6 baseline: accuracy=1.000. The fn=1 regression is under investigation.)
 
-For arbitrary uploaded documents, `eval:generated` is the primary user-KB smoke
-test. A red generated report is a diagnostic signal for the current uploaded
-KB/retrieval/prompt behavior, not a stable release benchmark. `eval:seed`
-remains the regression benchmark.
+Mode Matrix (last run on v7):
 
-Eval case results include `answerMode`, `answerSupport`, and compact
-`retrievalTrace` snapshots, and the `/eval` failed-case cards can inspect the
-same support/trace signals used by chat debug.
-
-The `/eval` page also supports a Mode Matrix report that compares answer modes
-on accuracy, decline rate, confusion matrix, policy/model declines, and average
-answer support score.
-
-Current stable seed benchmark (rag-grounded-v6):
-
-- `answerability_accuracy=1.000`
-- `tp=12`
-- `tn=4`
-- `fp=0`
-- `fn=0`
-
-Current generated user-KB smoke report:
-
-- `answerability_accuracy=1.000`
-- `tp=12`
-- `tn=3`
-- `fp=0`
-- `fn=0`
-
-Previously fn=2 ("classmodel" from PyTorch code chunks). Fixed by improving
-`isCodeLikeLine` to detect Python keywords/patterns, requiring inline-code
-keyword terms to also appear in prose, and adding a prose-ratio guard in
-`isUsefulChunk`.
-
-Current Mode Matrix (rag-grounded-v6, seed benchmark):
-
-| Mode | accuracy | fp | fn | decline |
-|---------|----------|----|----|---------|
-| strict | 1.000 | 0 | 0 | 25.0% |
-| balanced | 1.000 | 0 | 0 | 25.0% |
-| tutor | 0.938 | 1 | 0 | 18.8% |
-
-Improvement over v5: strict fixed fp=1→0; tutor improved fp=2→1.
-The remaining tutor fp=1 is seed-016 ("finalStatusModels in METRICS docs"),
-an unanswerable case where tutor's general-knowledge allowance causes the
-model to answer instead of decline on a borderline-relevance query.
+| Mode     | accuracy | fp | fn | decline |
+|----------|----------|----|----|---------|
+| balanced | 0.938    | 0  | 1  | 31.3%   |
 
 ## Architecture UI
 
-The `/architecture` page is an interactive project guide. Its UI is in:
+The `/architecture` page is an interactive project guide.
 
-- `apps/web/src/pages/architecture/ArchitecturePage.tsx`
+- UI: `apps/web/src/pages/architecture/ArchitecturePage.tsx`
+- Content: `apps/web/src/pages/architecture/architectureContent.ts`
 
-Its content data is in:
-
-- `apps/web/src/pages/architecture/architectureContent.ts`
-
-The page currently includes:
-
-- Pipeline overview
-- Visual Document/Chat/Eval flows
-- Trace Explorer
-- Retrieval explanations
-- Retrieval trace tabs for vector, lexical, merged, reranked, and final context
-- Eval explanations
-- Storage map
-- API explorer
-- Debug decoder
-- Glossary
-- Design trade-offs
-- Real payload examples
-- Failure playbook
-- Known limitations
-- Roadmap
-- Full walkthrough for one RAG question
-
-The markdown docs are not used to generate the UI. This is intentional for now:
-the page is interactive and type-safe TS data is simpler to maintain than a
-markdown-to-UI generation layer.
+Includes: pipeline overview, visual flows, trace explorer, retrieval explanations,
+eval explanations, storage map, API explorer, debug decoder, glossary,
+design trade-offs, real payload examples, failure playbook, known limitations,
+roadmap, full walkthrough.
 
 ## Source Spans
 
-Retrieval sources now include chunk-level character spans:
-
-- `startOffset`
-- `endOffset`
-
-These offsets point into the normalized text used by the chunker. They are
-metadata for inspection/debugging and are carried through Qdrant payloads, chat
-sources, document detail chunks, and eval source snapshots.
-
-Important limitation: this is not answer-level citation extraction yet. The
-assistant still cites retrieved chunks, not individual generated claims.
-The chat UI highlights matched `answerSupport.matchedTerms` inside source
-chunks to make grounding easier to inspect.
+Chunk-level character spans `startOffset` / `endOffset` are stored in
+`document_chunks`, carried through Qdrant payloads, chat sources, document detail
+chunks, and eval source snapshots. Not yet answer-level citations.
 
 ## Known Limitations
 
-- No auth/user ownership yet.
-- Ingestion is synchronous.
-- No async ingestion status/jobs.
-- No answer-level citations.
-- Generated eval exists, but it is deterministic/extractive rather than
-  LLM-authored.
-- Chunking is simple.
+- No auth/user ownership.
+- Reindex script required when changing embedding prefixes (existing Qdrant vectors
+  were created without prefixes before asymmetric embeddings were added).
 - Rerank is local, not cross-encoder-based.
+- Generated eval is deterministic/extractive, not LLM-authored.
 - No observability dashboard.
+- Tooltip for "Strict" answer mode button is clipped on the left edge (known UI bug,
+  fix pending).
 
 ## Suggested Next Engineering Steps
 
-1. Quality + eval foundation.
-   - Keep eval first before adding more product features.
-   - Prompt hierarchy is now clean (rag-grounded-v6): base contract is
-     format-only; mode policy owns grounding scope and knowledge sources.
-   - Mode Matrix: strict=1.000, balanced=1.000, tutor=0.938 on seed benchmark.
-   - Remaining tutor fp=1 (seed-016, unanswerable border case): consider
-     adding a stronger "no relevant context → decline" signal in tutor policy
-     or adding seed-016 as an explicit tutor unanswerable test case.
-   - Category summaries, failed cases, `bestScore`, `decision`,
-     `guardrailReason`, answer support, and retrieval trace are visible.
-2. Generated eval for current user documents.
-   - Foundation exists through `eval:generate` and `eval:generated`.
-   - Generated eval v2 now includes harder categories: `definition`,
-     `mentioned-not-defined`, `partial`, `multi-chunk`, and `tutor-broad`.
-   - fn=2 in generated eval are from code-chunk keywords ("classmodel") that
-     produce low-quality questions. Consider filtering chunks that are mostly
-     code before question generation.
-   - Next: improve question wording diversity and optionally add an
-     LLM-generator with strict JSON validation.
-3. Retrieval Debug panel.
-   - Chat and eval failed-case debug now show vector, lexical, merged, reranked,
-     and final candidates. Next: add filtering/search within trace and compare
-     candidate movement across stages.
-4. Async ingestion and statuses.
-   - Move toward `uploaded -> processing -> indexed` or `failed`.
-   - API should return `docId` quickly.
-   - Backend should index in a separate job/process.
-   - UI should show status, retry, and error message.
-5. Citations/source spans.
-   - Chunk-level `section`, `chunkIndex`, `startOffset`, and `endOffset` exist.
-   - Next: add answer-level citations that bind generated claims to evidence spans.
-   - Later add PDF page number.
-   - Show exact evidence source in answers.
-6. Security / ownership.
-   - Add simple auth model.
-   - Documents and chat history should belong to user/tenant.
-   - Retrieval should filter Postgres and Qdrant by user/tenant.
-7. LangChain comparison mode.
-   - Keep handmade pipeline as primary.
-   - Add experimental `/chat/langchain/stream`.
-   - Compare architecture and behavior on `/architecture`.
-8. LangGraph / agentic retrieval.
-   - Planner -> query rewrite -> retrieval -> rerank -> answer/clarify/decline.
-9. Better chunking, stronger reranker, observability/tracing.
+1. Fix tooltip clipping for "Strict" mode button in `ChatPanel.tsx`.
+   Use CSS `:first-child` / `:last-child` on `ModeItem` to anchor tooltip
+   left/right instead of centering. Requires declaring `ModeTooltip` before
+   `ModeItem` in the file to avoid circular styled-component reference.
+
+2. Improve eval quality after v7 prompt refactor.
+   The fn=1 regression (seed-014, score=0.518, policy=false, model=true) should
+   be investigated — it answers when it should decline. Check if system/prompt
+   split affected the balanced mode grounding behavior.
+
+3. Answer-level citations.
+   Chunk spans exist. Next: bind generated claims to evidence spans.
+
+4. Better chunking / cross-encoder reranker.
+
+5. Auth / user ownership.
+
+6. Observability dashboard.
 
 ## Git Workflow Preference
 
 After completing a meaningful change:
 
-1. Update `/architecture` or docs when behavior/architecture changes.
-2. Run relevant checks.
-3. Commit.
+1. Update `docs/PROJECT_CONTEXT.md` when behavior/architecture changes.
+2. Run relevant checks (`tsc`, `eval:seed`).
+3. Commit with descriptive message.
 4. Push to `origin/main`.
+
+## RAG Engineering Principles
+
+Do not improve the assistant by accumulating document-specific `if` statements
+or narrow prompt rules for particular wording patterns. Fixes must stay portable
+across domains.
+
+Avoid:
+- `if document text contains "roles:", ask a roles-specific question`
+- prompt rules for one phrasing
+- code branches tied to current sample documents
+
+Prefer:
+- general retrieval, ranking, chunking, and metadata contracts
+- compact prompt policies that express invariant behavior
+- prompt/version/generation metadata in debug reports
+- eval cases that expose failures without hardcoding the fix
