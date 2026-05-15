@@ -110,13 +110,14 @@ export async function streamChatWithKnowledgeBase(
   const prompt = buildRagPrompt(input.question, context.contextChunks, answerMode);
   const llmStart = performance.now();
   let answer = "";
+  const filteredOnChunk = createPreambleFilter(onChunk);
 
   await streamLLM(prompt, (chunk) => {
     answer += chunk;
-    onChunk(chunk);
+    filteredOnChunk(chunk);
   });
 
-  answer = normalizeDeclineAnswer(answer);
+  answer = stripAnswerPreamble(normalizeDeclineAnswer(answer));
   const answerSupport = analyzeAnswerSupport(answer, context.sources);
 
   const llmMs = Number((performance.now() - llmStart).toFixed(2));
@@ -153,6 +154,43 @@ export async function streamChatWithKnowledgeBase(
         searchQuery: context.searchQuery,
       },
     },
+  };
+}
+
+const PREAMBLE_LINE =
+  /^(БАЗОВЫЙ КОНТРАКТ|РЕЖИМ[:：]|КОНТЕКСТ[:：]|В ответе на вопрос|В ответе[:：])/i;
+
+function stripAnswerPreamble(text: string): string {
+  const lines = text.split("\n");
+  let i = 0;
+
+  while (i < lines.length && (lines[i].trim() === "" || PREAMBLE_LINE.test(lines[i].trim()))) {
+    i++;
+  }
+
+  return lines.slice(i).join("\n").trimStart();
+}
+
+function createPreambleFilter(onChunk: StreamChunkHandler): StreamChunkHandler {
+  let buffer = "";
+  let started = false;
+
+  return (chunk: string) => {
+    if (started) {
+      onChunk(chunk);
+      return;
+    }
+
+    buffer += chunk;
+    const stripped = stripAnswerPreamble(buffer);
+
+    if (stripped.length > 0 || buffer.length > 500) {
+      started = true;
+      if (stripped) {
+        onChunk(stripped);
+      }
+      buffer = "";
+    }
   };
 }
 
