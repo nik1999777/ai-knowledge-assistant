@@ -182,9 +182,17 @@ function createPreambleFilter(onChunk: StreamChunkHandler): StreamChunkHandler {
     }
 
     buffer += chunk;
+
+    // Wait for at least one complete line before checking for preamble.
+    // Partial chunks can't be matched against the preamble regex reliably.
+    const hasCompleteLine = buffer.includes("\n");
+    if (!hasCompleteLine && buffer.length < 300) {
+      return;
+    }
+
     const stripped = stripAnswerPreamble(buffer);
 
-    if (stripped.length > 0 || buffer.length > 500) {
+    if (stripped.length > 0 || buffer.length > 600) {
       started = true;
       if (stripped) {
         onChunk(stripped);

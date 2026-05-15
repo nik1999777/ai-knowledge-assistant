@@ -32,7 +32,8 @@ ${context}
 
 ━━━ ВОПРОС ━━━
 ${question}
-`.trim();
+
+Ответ:`.trim();
 }
 
 function buildAnswerModePolicy(answerMode: RagAnswerMode): string {
