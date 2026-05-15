@@ -107,15 +107,19 @@ export async function streamChatWithKnowledgeBase(
     };
   }
 
-  const prompt = buildRagPrompt(input.question, context.contextChunks, answerMode);
+  const ragPrompt = buildRagPrompt(input.question, context.contextChunks, answerMode);
   const llmStart = performance.now();
   let answer = "";
   const filteredOnChunk = createPreambleFilter(onChunk);
 
-  await streamLLM(prompt, (chunk) => {
-    answer += chunk;
-    filteredOnChunk(chunk);
-  });
+  await streamLLM(
+    ragPrompt.prompt,
+    (chunk) => {
+      answer += chunk;
+      filteredOnChunk(chunk);
+    },
+    ragPrompt.system,
+  );
 
   answer = stripAnswerPreamble(normalizeDeclineAnswer(answer));
   const answerSupport = analyzeAnswerSupport(answer, context.sources);

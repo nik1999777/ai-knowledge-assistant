@@ -8,12 +8,13 @@ export const LLM_GENERATION_OPTIONS = {
   seed: env.OLLAMA_LLM_SEED,
 };
 
-export async function askLLM(prompt: string): Promise<string> {
+export async function askLLM(prompt: string, system?: string): Promise<string> {
   const data = await postOllamaJson<{ response: string }>(
     "/api/generate",
     {
       model: env.OLLAMA_LLM_MODEL,
       prompt,
+      ...(system ? { system } : {}),
       options: LLM_GENERATION_OPTIONS,
       stream: false,
     },
@@ -26,12 +27,14 @@ export async function askLLM(prompt: string): Promise<string> {
 export async function streamLLM(
   prompt: string,
   onChunk: StreamChunkHandler,
+  system?: string,
 ): Promise<void> {
   const stream = await postOllamaStream(
     "/api/generate",
     {
       model: env.OLLAMA_LLM_MODEL,
       prompt,
+      ...(system ? { system } : {}),
       options: LLM_GENERATION_OPTIONS,
       stream: true,
     },
