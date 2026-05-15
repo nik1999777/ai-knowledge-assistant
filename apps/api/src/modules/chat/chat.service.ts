@@ -112,7 +112,7 @@ export async function streamChatWithKnowledgeBase(
   const ragPrompt = buildRagPrompt(input.question, context.contextChunks, answerMode, options.history);
   const llmStart = performance.now();
   let answer = "";
-  const filteredOnChunk = createPreambleFilter(onChunk);
+  const { filter: filteredOnChunk, flush: flushPreamble } = createPreambleFilter(onChunk);
 
   await streamLLM(
     ragPrompt.prompt,
@@ -122,6 +122,8 @@ export async function streamChatWithKnowledgeBase(
     },
     ragPrompt.system,
   );
+
+  flushPreamble();
 
   answer = stripAnswerPreamble(normalizeDeclineAnswer(answer));
   const answerSupport = analyzeAnswerSupport(answer, context.sources);
@@ -177,11 +179,14 @@ function stripAnswerPreamble(text: string): string {
   return lines.slice(i).join("\n").trimStart();
 }
 
-function createPreambleFilter(onChunk: StreamChunkHandler): StreamChunkHandler {
+function createPreambleFilter(onChunk: StreamChunkHandler): {
+  filter: StreamChunkHandler;
+  flush: () => void;
+} {
   let buffer = "";
   let started = false;
 
-  return (chunk: string) => {
+  const filter = (chunk: string) => {
     if (started) {
       onChunk(chunk);
       return;
@@ -206,6 +211,21 @@ function createPreambleFilter(onChunk: StreamChunkHandler): StreamChunkHandler {
       buffer = "";
     }
   };
+
+  // Flush any buffered content when the stream ends without hitting the
+  // newline / 300-char threshold (short single-line answers).
+  const flush = () => {
+    if (!started && buffer.length > 0) {
+      const stripped = stripAnswerPreamble(buffer);
+      if (stripped) {
+        onChunk(stripped);
+      }
+      buffer = "";
+      started = true;
+    }
+  };
+
+  return { filter, flush };
 }
 
 function normalizeDeclineAnswer(answer: string) {
