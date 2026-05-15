@@ -65,7 +65,7 @@ export async function streamChatWithKnowledgeBase(
   const totalStart = performance.now();
   const context = await buildRagChatContext(input, {
     documentScope: options.documentScope ?? "user",
-    previousQuestion: options.history?.[options.history.length - 1]?.question,
+    previousTurn: options.history?.[options.history.length - 1],
   });
   const answerMode: RagAnswerMode = input.answerMode ?? "balanced";
 
@@ -276,10 +276,10 @@ function analyzeAnswerSupport(answer: string, sources: RagSource[]) {
 
 async function buildRagChatContext(
   input: ChatInput,
-  options: { documentScope: DocumentScope; previousQuestion?: string },
+  options: { documentScope: DocumentScope; previousTurn?: ConversationTurn },
 ): Promise<RagChatContext> {
   const { result: searchQuery, ms: rewriteMs } = await measureTime(() =>
-    rewriteQueryForSearch(input.question, options.previousQuestion),
+    rewriteQueryForSearch(input.question, options.previousTurn),
   );
 
   const { result: questionEmbedding, ms: embeddingMs } = await measureTime(() =>

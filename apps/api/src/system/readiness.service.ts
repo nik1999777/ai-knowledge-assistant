@@ -1,8 +1,9 @@
 import { checkPostgresConnection } from "../db/postgres.client.js";
-import { checkOllamaConnection } from "../clients/ollama.client.js";
 import { checkQdrantConnection } from "../clients/qdrant.client.js";
+import { llmProvider } from "../providers/index.js";
+import { env } from "../config/env.js";
 
-type DependencyStatus = "up" | "down";
+type DependencyStatus = "up" | "down" | "n/a";
 
 type DependencyCheckResult = {
   status: DependencyStatus;
@@ -14,21 +15,19 @@ export type ReadinessResult = {
   dependencies: {
     postgres: DependencyCheckResult;
     qdrant: DependencyCheckResult;
-    ollama: DependencyCheckResult;
+    llm: DependencyCheckResult;
   };
 };
 
 export async function getReadiness(): Promise<ReadinessResult> {
-  const [postgres, qdrant, ollama] = await Promise.all([
+  const [postgres, qdrant, llm] = await Promise.all([
     runDependencyCheck(checkPostgresConnection),
     runDependencyCheck(checkQdrantConnection),
-    runDependencyCheck(checkOllamaConnection),
+    runDependencyCheck(() => llmProvider.ping()),
   ]);
 
   const status =
-    postgres.status === "up" &&
-    qdrant.status === "up" &&
-    ollama.status === "up"
+    postgres.status === "up" && qdrant.status === "up" && llm.status === "up"
       ? "ready"
       : "degraded";
 
@@ -37,7 +36,7 @@ export async function getReadiness(): Promise<ReadinessResult> {
     dependencies: {
       postgres,
       qdrant,
-      ollama,
+      llm: { ...llm, message: llm.message ?? `provider: ${env.LLM_PROVIDER}` },
     },
   };
 }
