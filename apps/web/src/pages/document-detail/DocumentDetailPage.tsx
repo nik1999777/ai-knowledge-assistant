@@ -1,4 +1,6 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 import { AppHeader } from "../../shared/components/AppHeader";
@@ -113,7 +115,11 @@ export function DocumentDetailPage() {
                 </TextTabs>
               </SectionHeader>
               {textView === "readable" ? (
-                <ReadableBlock>{renderReadableMarkdown(data.textContent)}</ReadableBlock>
+                <ReadableBlock>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {data.textContent}
+                  </ReactMarkdown>
+                </ReadableBlock>
               ) : (
                 <ContentBlock>
                   {textView === "original" ? data.rawTextContent : data.textContent}
@@ -388,10 +394,54 @@ const ReadableBlock = styled.div`
   }
 
   code {
-    font-family: "SFMono-Regular", "Menlo", "Monaco", monospace;
-    background: rgba(15, 23, 42, 0.06);
-    border-radius: 6px;
-    padding: 2px 5px;
+    font-family: "Fira Code", "Cascadia Code", "Menlo", "Monaco", monospace;
+    background: rgba(15, 23, 42, 0.07);
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 13px;
+  }
+
+  pre {
+    margin: 12px 0;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.15);
+    overflow-x: auto;
+
+    code {
+      display: block;
+      padding: 14px 16px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      color: #e2e8f0;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+
+    th,
+    td {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.05);
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) td {
+      background: rgba(15, 23, 42, 0.02);
+    }
   }
 `;
 
@@ -521,90 +571,3 @@ function formatChunkSpan(startOffset?: number, endOffset?: number) {
   return `span ${startOffset}-${endOffset}`;
 }
 
-function renderReadableMarkdown(text: string) {
-  const lines = text.split("\n");
-  const nodes: ReactNode[] = [];
-  let listItems: string[] = [];
-
-  function flushList(key: string) {
-    if (listItems.length === 0) {
-      return;
-    }
-
-    nodes.push(
-      <ul key={key}>
-        {listItems.map((item, index) => (
-          <li key={`${key}-${index}`}>{renderInlineMarkdown(item)}</li>
-        ))}
-      </ul>,
-    );
-    listItems = [];
-  }
-
-  lines.forEach((line, index) => {
-    const trimmed = line.trim();
-
-    if (!trimmed || trimmed === "---") {
-      flushList(`list-${index}`);
-      return;
-    }
-
-    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-
-    if (heading?.[1] && heading[2]) {
-      flushList(`list-${index}`);
-      const level = heading[1].length;
-      const content = renderInlineMarkdown(heading[2]);
-
-      if (level === 1) {
-        nodes.push(<h1 key={index}>{content}</h1>);
-      } else if (level === 2) {
-        nodes.push(<h2 key={index}>{content}</h2>);
-      } else {
-        nodes.push(<h3 key={index}>{content}</h3>);
-      }
-
-      return;
-    }
-
-    const listItem = trimmed.match(/^[-*]\s+(.+)$/);
-
-    if (listItem?.[1]) {
-      listItems.push(listItem[1]);
-      return;
-    }
-
-    if (trimmed.startsWith(">")) {
-      flushList(`list-${index}`);
-      nodes.push(
-        <blockquote key={index}>
-          {renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}
-        </blockquote>,
-      );
-      return;
-    }
-
-    flushList(`list-${index}`);
-    nodes.push(<p key={index}>{renderInlineMarkdown(trimmed)}</p>);
-  });
-
-  flushList("list-end");
-
-  return nodes;
-}
-
-function renderInlineMarkdown(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
-
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
-    }
-
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={index}>{part.slice(1, -1)}</code>;
-    }
-
-    return part;
-  });
-}
