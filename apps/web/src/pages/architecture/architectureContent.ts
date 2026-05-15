@@ -199,41 +199,52 @@ export const STAGES: StageInfo[] = [
   {
     id: "index",
     title: "3. Index",
-    subtitle: "Postgres + Qdrant + scope",
-    goal: "Сохранить документ так, чтобы потом искать его семантически и лексически.",
+    subtitle: "Postgres + Qdrant + scope (async)",
+    goal: "Сохранить документ так, чтобы потом искать его семантически и лексически. Embedding происходит асинхронно.",
     flow: [
-      "Ollama `nomic-embed-text` строит embedding для каждого chunk-а.",
+      "Postgres сразу получает document record с `ingestion_status='processing'`. API возвращает docId немедленно.",
+      "В фоне: каждый chunk сохраняется в таблицу `document_chunks` (chunk_text, section, chunk_len, start_offset, end_offset).",
+      "Ollama `nomic-embed-text` строит embedding для каждого chunk-а с префиксом `search_document:` (asymmetric embeddings).",
       "Qdrant хранит vector + payload: `documentScope`, `docId`, `chunkIndex`, `section`, `startOffset`, `endOffset`, `text`.",
-      "Postgres хранит документ, metadata и `search_vector` для FTS.",
+      "Postgres хранит документ, metadata, `search_vector` для FTS на уровне документа.",
+      "При успехе: `ingestion_status → 'indexed'`. При ошибке: `'failed'`.",
       "`documentScope=user` и `documentScope=eval` изолируют обычные документы от benchmark.",
+      "Frontend поллит статус каждые 2 секунды пока есть документы в статусе `processing`.",
     ],
-    metrics: ["embedding_latency_ms", "qdrant_upsert_ms", "document_scope"],
+    metrics: ["embedding_latency_ms", "qdrant_upsert_ms", "document_scope", "ingestion_status"],
     failures: [
       "Если Qdrant и Postgres расходятся, retrieval может показывать устаревшие источники.",
       "Без scope isolation eval может загрязнить обычный чат.",
-      "Медленные embeddings тормозят ingestion.",
+      "Медленные embeddings тормозят ingestion (но не блокируют upload-ответ).",
+      "При падении background job статус остается 'failed' — виден в UI.",
     ],
     files: [
       "apps/api/src/services/embeddings.service.ts",
+      "apps/api/src/modules/documents/document-ingest.service.ts",
       "apps/api/src/clients/qdrant.client.ts",
       "apps/api/src/repositories/documents.repository.ts",
       "apps/api/src/db/migrations/003_document_scope.sql",
+      "apps/api/src/db/migrations/006_ingestion_status.sql",
     ],
   },
   {
     id: "retrieve",
     title: "4. Retrieve",
-    subtitle: "Vector + FTS -> RRF -> rerank",
-    goal: "Найти chunk-и, которые лучше всего отвечают на вопрос.",
+    subtitle: "Query rewrite → Vector + FTS → RRF → rerank",
+    goal: "Найти chunk-и, которые лучше всего отвечают на вопрос. Перед поиском вопрос переписывается в ключевые термины.",
     flow: [
-      "Вопрос превращается в embedding.",
+      "Query rewriting: LLM извлекает 3–7 ключевых search-терминов из вопроса (temperature=0, fast, fallback на оригинал).",
+      "Переписанный запрос embedируется с префиксом `search_query:` (asymmetric: другой prefix, чем у документов).",
       "Qdrant ищет похожие vectors сразу с filter по `documentScope`.",
-      "Postgres FTS ищет lexical matches через `search_vector`.",
+      "Postgres FTS ищет lexical matches в таблице `document_chunks` используя переписанный запрос.",
       "Кандидаты дедуплицируются по `docId:chunkIndex`.",
       "RRF объединяет vector rank и lexical rank.",
       "Local rerank добавляет token overlap, title/section overlap, phrase bonus и short penalty.",
+      "Оригинальный вопрос используется для scoring/reranking и LLM prompt; переписанный — только для поиска.",
     ],
     metrics: [
+      "rewrite_ms",
+      "search_query (debug)",
       "vector_count",
       "lexical_count",
       "merged_count",
@@ -242,11 +253,13 @@ export const STAGES: StageInfo[] = [
       "final_score",
     ],
     failures: [
+      "Плохой query rewrite может исключить важные термины.",
       "Vector может пропустить точный термин.",
       "Lexical может шуметь на общих словах.",
       "Если fusion плохой, хороший chunk не попадет в top-K.",
     ],
     files: [
+      "apps/api/src/services/query-rewrite.service.ts",
       "apps/api/src/modules/chat/chat.service.ts",
       "apps/api/src/repositories/documents.repository.ts",
       "apps/api/src/clients/qdrant.client.ts",
@@ -280,28 +293,32 @@ export const STAGES: StageInfo[] = [
   {
     id: "generation",
     title: "6. Generation",
-    subtitle: "Grounded prompt + SSE",
-    goal: "Сгенерировать ответ только из retrieved context и стримить его в UI.",
+    subtitle: "System/prompt split + SSE + markdown",
+    goal: "Сгенерировать ответ только из retrieved context, стримить его в UI и отрендерить как markdown.",
     flow: [
-      "Prompt получает вопрос и top-K retrieved chunks с title, section и chunkIndex.",
-      "Ollama `llama3` генерирует ответ.",
-      "Backend отправляет chunks ответа по SSE.",
-      "Meta содержит `sources`, `timing`, `debug`.",
-      "`debug.promptVersion` фиксирует версию grounded prompt-а.",
+      "Instructions уходят в Ollama параметр `system` — модель никогда не эхоит их в ответ.",
+      "Context и вопрос уходят в параметр `prompt`: `Документы:\\n{context}\\n\\nВопрос: {question}\\n\\nОтвет:`.",
+      "Разделение system/prompt — главная защита от эха заголовков; preamble filter остается как fallback.",
+      "Три режима: `strict` (только прямой ответ или отказ), `balanced` (grounded partial answer), `tutor` (По документам: + Общее пояснение:).",
+      "Backend стримит chunks ответа по SSE через `createPreambleFilter` и собирает финальный answer.",
+      "Финальный answer нормализуется через `stripAnswerPreamble` + `normalizeDeclineAnswer`.",
+      "Meta содержит `sources`, `timing`, `debug` с `promptVersion` и `generationOptions`.",
       "`debug.generationOptions` фиксирует temperature/seed для repeatable eval.",
-      "Если model output содержит фразу отказа с лишним текстом, backend нормализует saved answer до точного decline contract.",
+      "UI рендерит ответ как markdown: code blocks, headers, lists, tables, bold, inline code.",
     ],
-    metrics: ["llm_latency_ms", "total_latency_ms", "stream_error_rate"],
+    metrics: ["llm_latency_ms", "total_latency_ms", "stream_error_rate", "prompt_version"],
     failures: [
-      "Слабый prompt может ослабить grounding.",
-      "SSE может оборваться.",
+      "Слабый grounding или неправильный режим ослабляют качество ответа.",
+      "SSE может оборваться при долгой генерации.",
       "Если context плохой, generation уже не спасет ответ.",
+      "Preamble filter может задержать первые символы стрима — это нормально при срабатывании.",
     ],
     files: [
       "apps/api/src/services/prompt.service.ts",
       "apps/api/src/services/llm.service.ts",
       "apps/api/src/utils/sse.ts",
       "apps/web/src/features/chat/api/chat.ts",
+      "apps/web/src/shared/components/MarkdownAnswer.tsx",
     ],
   },
   {
@@ -342,8 +359,8 @@ export const TRACES: Record<TraceId, { title: string; summary: string; steps: Tr
       },
       {
         title: "Backend строит RAG context",
-        description: "Сервис делает embedding, vector search, lexical search, RRF fusion и rerank.",
-        files: ["apps/api/src/modules/chat/chat.service.ts"],
+        description: "Сервис переписывает вопрос в ключевые термины (query rewriting), делает embedding, vector search, lexical search, RRF fusion и rerank.",
+        files: ["apps/api/src/modules/chat/chat.service.ts", "apps/api/src/services/query-rewrite.service.ts"],
       },
       {
         title: "Decision policy выбирает answer/decline",
@@ -380,22 +397,27 @@ export const TRACES: Record<TraceId, { title: string; summary: string; steps: Tr
   },
   ingestion: {
     title: "Пользователь загружает документ",
-    summary: "Документ превращается в search-ready данные в Postgres и Qdrant.",
+    summary: "Документ превращается в search-ready данные в Postgres и Qdrant асинхронно — upload-ответ возвращается немедленно.",
     steps: [
       {
-        title: "Upload",
-        description: "Frontend отправляет файл, backend принимает multipart.",
+        title: "Upload + immediate response",
+        description: "Frontend отправляет файл, backend создает Postgres record с `ingestion_status='processing'` и сразу возвращает docId. UI показывает пульсирующий статус 'Индексация...'.",
         files: ["apps/web/src/features/documents/components/IngestPanel.tsx", "apps/api/src/modules/documents/documents.controller.ts"],
       },
       {
-        title: "Parse + chunk",
-        description: "Parser извлекает текст, chunk service режет его на фрагменты.",
+        title: "Parse + chunk (синхронно)",
+        description: "Parser извлекает текст, chunk service режет его на фрагменты и сохраняет каждый chunk в таблицу `document_chunks`.",
         files: ["apps/api/src/services/document-parser.service.ts", "apps/api/src/services/chunk.service.ts"],
       },
       {
-        title: "Embed + store",
-        description: "Embeddings уходят в Qdrant, metadata и FTS search_vector уходят в Postgres.",
+        title: "Embed + store (фоново)",
+        description: "Ollama строит embeddings каждого chunk-а с префиксом `search_document:`. Векторы уходят в Qdrant, при успехе `ingestion_status → 'indexed'`, при ошибке → `'failed'`.",
         files: ["apps/api/src/modules/documents/document-ingest.service.ts", "apps/api/src/clients/qdrant.client.ts"],
+      },
+      {
+        title: "Frontend polling",
+        description: "Frontend поллит `GET /documents/:docId/status` каждые 2 секунды пока есть документы в статусе `processing`. Статус badge: желтый → зеленый или красный.",
+        files: ["apps/web/src/features/documents/components/IngestPanel.tsx"],
       },
     ],
   },
@@ -423,6 +445,8 @@ export const TRACES: Record<TraceId, { title: string; summary: string; steps: Tr
 };
 
 export const DEBUG_FIELDS = [
+  ["searchQuery", "Переписанный поисковый запрос после query rewriting. Именно он используется для embedding и FTS."],
+  ["rewriteMs", "Latency шага query rewriting в миллисекундах."],
   ["decision", "Итог policy: `answered` или `declined`."],
   ["bestScore", "Score лучшего source после RRF fusion и local rerank."],
   ["origin", "`vector`, `lexical` или `hybrid`; показывает, откуда пришел chunk."],
@@ -432,13 +456,16 @@ export const DEBUG_FIELDS = [
   ["finalScore", "Финальный score после local rerank; он отображается как source score."],
   ["domainEvidence", "Доля query tokens, найденных в итоговых sources."],
   ["guardrailReason", "Почему policy отклонила вопрос, если был declined."],
-  ["timing", "embedding/search/llm/total latency для диагностики скорости."],
+  ["promptVersion", "Версия grounded prompt-а, например `rag-grounded-v7`. Нужна для воспроизведения eval."],
+  ["generationOptions", "temperature и seed, использованные при генерации — для repeatable eval."],
+  ["timing", "rewrite/embedding/search/llm/total latency для диагностики скорости."],
 ];
 
 export const API_ROUTES = [
-  ["POST /documents", "Загрузить файл `.txt/.md/.csv/.pdf/.docx/.zip` и запустить ingestion.", "documents.controller -> document-ingest.service"],
+  ["POST /documents", "Загрузить файл `.txt/.md/.csv/.pdf/.docx/.zip` и запустить ingestion. Сразу возвращает docId, embedding идет фоново.", "documents.controller -> document-ingest.service"],
   ["GET /documents", "Список user documents, scoped query/search.", "documents.repository"],
   ["GET /documents/:docId", "Детальная страница документа и chunk preview.", "document-query.service"],
+  ["GET /documents/:docId/status", "Polling endpoint: возвращает `ingestion_status` документа. Frontend поллит каждые 2с.", "documents.controller"],
   ["DELETE /documents/:docId", "Удалить документ из Postgres и Qdrant.", "document-delete.service"],
   ["POST /chat/stream", "SSE chat flow: retrieval, decision, generation, meta.", "chat.controller -> chat.service"],
   ["GET /chat/sessions", "Список chat sessions.", "chat-history.service"],
@@ -450,8 +477,8 @@ export const API_ROUTES = [
 export const STORAGE_ITEMS = [
   {
     title: "Postgres",
-    body: "Хранит documents, chat_sessions, chat_messages, metadata, raw text для inspection, normalized text для retrieval и `search_vector` для lexical retrieval.",
-    fields: ["document_scope", "doc_id", "raw_text_content", "text_content", "search_vector", "sources JSONB", "debug JSONB"],
+    body: "Хранит documents, chat_sessions, chat_messages, metadata, raw text для inspection, normalized text для retrieval и `search_vector` для lexical retrieval. Таблица `document_chunks` хранит chunk-уровень для FTS и source spans.",
+    fields: ["document_scope", "doc_id", "raw_text_content", "text_content", "search_vector", "ingestion_status", "sources JSONB", "debug JSONB", "document_chunks (chunk_text, section, chunk_len, start_offset, end_offset)"],
   },
   {
     title: "Qdrant",
@@ -614,6 +641,22 @@ export const GLOSSARY: GlossaryItem[] = [
     example:
       "`fp=0` значит система не ответила там, где должна была отказаться.",
   },
+  {
+    term: "Asymmetric Embeddings",
+    short: "Разные embedding-префиксы для документов и запросов.",
+    projectMeaning:
+      "`nomic-embed-text` поддерживает инструкционные префиксы. Документы embed-ируются с `search_document:`, запросы с `search_query:`. Это улучшает качество retrieval без смены модели.",
+    example:
+      "Функция `getDocumentEmbedding` добавляет `search_document:` при ingestion; `getQueryEmbedding` добавляет `search_query:` при chat retrieval.",
+  },
+  {
+    term: "Query Rewriting",
+    short: "LLM-шаг перед retrieval: вопрос → ключевые search-термины.",
+    projectMeaning:
+      "Быстрый LLM вызов (temperature=0, num_predict=40) извлекает 3–7 ключевых терминов из пользовательского вопроса. Переписанный запрос используется для embedding и FTS. Оригинальный вопрос сохраняется для rerank и LLM prompt.",
+    example:
+      "Вопрос 'что дает RRF?' → rewritten query 'RRF rank fusion retrieval'. `debug.searchQuery` показывает результат.",
+  },
 ];
 
 export const DEBUG_EXAMPLE = [
@@ -689,6 +732,14 @@ export const DESIGN_DECISIONS: DecisionRecord[] = [
     tradeoff:
       "Один shared storage проще, но каждый query обязан правильно применять scope в Postgres и Qdrant.",
     files: ["apps/api/src/db/migrations/003_document_scope.sql", "apps/api/src/clients/qdrant.client.ts"],
+  },
+  {
+    decision: "System/prompt split для Ollama",
+    why: "Модели склонны эхоить содержимое `prompt` в ответе. Вынос инструкций в параметр `system` гарантирует, что заголовки типа 'БАЗОВЫЙ КОНТРАКТ' или 'РЕЖИМ:' никогда не появятся в стриме.",
+    alternatives: "Один большой prompt с инструкциями и контекстом; post-processing strip без split; добавить суффикс 'Ответ:' в prompt.",
+    tradeoff:
+      "System/prompt split + суффикс 'Ответ:' устраняют пробему структурно. Preamble filter остается как defense-in-depth fallback на случай модельных девиаций.",
+    files: ["apps/api/src/services/prompt.service.ts", "apps/api/src/services/llm.service.ts"],
   },
 ];
 
@@ -816,10 +867,12 @@ export const LIFECYCLES = [
     steps: [
       "Upload file",
       "Parse text",
-      "Chunk text",
-      "Generate embeddings",
-      "Insert Postgres document",
-      "Upsert Qdrant vectors",
+      "Chunk text → save to document_chunks",
+      "Insert Postgres document (status=processing)",
+      "API returns docId immediately",
+      "Background: generate embeddings (search_document: prefix)",
+      "Background: upsert Qdrant vectors",
+      "Status → indexed (or failed)",
       "Show in /documents",
       "Use in chat retrieval",
       "Delete from Postgres + Qdrant",
@@ -830,11 +883,14 @@ export const LIFECYCLES = [
     steps: [
       "Create/reuse session",
       "Send user question",
-      "Build RAG context",
+      "Query rewrite (LLM, temp=0)",
+      "Embed rewritten query (search_query: prefix)",
+      "Vector + lexical search",
+      "RRF fusion + local rerank",
       "Decide answer/decline",
-      "Stream LLM answer",
-      "Collect final text",
-      "Save assistant message",
+      "Stream LLM answer (markdown)",
+      "Collect final text + strip preamble",
+      "Save assistant message with debug",
       "Restore answer with sources/debug",
     ],
   },
@@ -851,21 +907,20 @@ export const MODULE_BOUNDARIES = [
 
 export const KNOWN_LIMITATIONS = [
   "Нет auth/user ownership: пока база считается локальной и single-user.",
-  "Ingestion синхронный: большие документы могут долго держать request.",
-  "Нет ingestion statuses/retry queue.",
-  "Есть chunk-level source spans, но нет citations внутри сгенерированного ответа.",
-  "Generated eval v2 детерминированный/extractive и уже добавляет harder categories, но пока не использует LLM для разнообразных вопросов.",
+  "Есть chunk-level source spans (`startOffset`/`endOffset`), но нет answer-level citations.",
+  "Generated eval детерминированный/extractive — не использует LLM для разнообразных вопросов.",
   "Chunking простой, без сложной semantic segmentation.",
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
   "Нет export/import knowledge base.",
+  "Tooltip для кнопки 'Strict' обрезается на левом краю (known UI bug).",
 ];
 
 export const ROADMAP_ITEMS = [
   ["1. Quality + eval foundation", "Главный следующий этап: укреплять eval до новых продуктовых фич. Mode Matrix уже сравнивает `strict`, `balanced` и `tutor` на seed benchmark; дальше нужно расширять eval-кейсы, категории (`answerable`, `unanswerable`, `tricky`, `exact`, `multi-hop`) и coverage сложных вопросов."],
   ["2. Generated eval for user docs", "`eval:generate` и `eval:generated` уже строят category-aware extractive dataset из текущих chunks: `definition`, `mentioned-not-defined`, `partial`, `multi-chunk`, `tutor-broad`. Красный generated report считается диагностикой текущей user KB/retrieval/prompt, а не стабильным release benchmark. Следующий шаг: улучшить формулировки и при желании добавить LLM-generator со строгой JSON validation."],
   ["3. Retrieval Debug panel", "RRF уже добавлен, но отдельная панель Retrieval Debug еще нужна: показать vector candidates, lexical candidates, merged/hybrid candidates, что отсеялось, raw ranks/scores и final rerank."],
-  ["4. Async ingestion statuses", "Перевести upload в production-like flow: `uploaded -> processing -> indexed` или `failed`. API должен быстро вернуть docId, backend индексирует отдельно, UI показывает статус, retry и error message."],
+  ["4. Async ingestion statuses ✓", "Реализовано: upload сразу возвращает docId, embedding идет фоново, `ingestion_status` (processing/indexed/failed) обновляется по мере работы, frontend поллит каждые 2с."],
   ["5. Citations/source spans", "Chunk-level section, chunkIndex, startOffset/endOffset уже есть. Следующий шаг: answer-level citations, page number для PDF и привязка claims к конкретному evidence месту."],
   ["6. Security / ownership", "Добавить user/tenant ownership: документы, chat history и retrieval должны фильтроваться по текущему user/tenant. Для Qdrant нужен payload filter по `tenantId`/`userId`."],
   ["7. LangChain comparison mode", "Не заменять handmade pipeline. Добавить experimental `/chat/langchain/stream`, повторить retrieval/generation через LangChain и описать разницу на Architecture."],
@@ -900,7 +955,7 @@ export const VISUAL_FLOWS: VisualFlow[] = [
     lanes: [
       {
         title: "Question",
-        steps: ["User asks", "Embedding", "Vector + lexical search"],
+        steps: ["User asks", "Query rewrite", "Embedding → Vector + lexical search"],
       },
       {
         title: "Reasoning",
@@ -908,7 +963,7 @@ export const VISUAL_FLOWS: VisualFlow[] = [
       },
       {
         title: "Output",
-        steps: ["LLM answer", "or Safe decline", "Save history"],
+        steps: ["LLM answer (markdown)", "or Safe decline", "Save history"],
       },
     ],
   },
@@ -937,13 +992,21 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     title: "1. Пользователь спрашивает: Что дает RRF?",
     plain:
-      "Система получает обычный текстовый вопрос. На этом этапе она еще не знает ответ и не вызывает LLM.",
+      "Система получает обычный текстовый вопрос. Прежде чем искать, она переписывает вопрос в компактные ключевые термины.",
     technical:
-      "Chat API принимает question, создает embedding через Ollama `nomic-embed-text` и запускает retrieval в scope `user` или `eval`.",
-    debug: "Смотреть `timing.embeddingMs`: если он большой, тормозит embedding model или Ollama.",
+      "Chat API принимает question и сначала вызывает `rewriteQueryForSearch`: LLM с temperature=0 и num_predict=40 извлекает 3–7 ключевых search-терминов. При ошибке используется оригинальный вопрос.",
+    debug: "Смотреть `debug.searchQuery`: это переписанный запрос. `timing.rewriteMs` показывает latency query rewriting.",
   },
   {
-    title: "2. Vector search ищет смысловые совпадения",
+    title: "2. Embedding + поиск",
+    plain:
+      "Переписанный запрос превращается в вектор и ищет похожие chunk-и сразу в двух системах: по смыслу и по словам.",
+    technical:
+      "Переписанный запрос embedируется с префиксом `search_query:` (asymmetric). Qdrant ищет vector совпадения, Postgres FTS ищет lexical совпадения в таблице `document_chunks`.",
+    debug: "Смотреть `timing.embeddingMs`. `vectorCount` и `lexicalCount` показывают сколько кандидатов нашел каждый слой.",
+  },
+  {
+    title: "4. Vector search ищет смысловые совпадения",
     plain:
       "Qdrant ищет chunk-и, похожие по смыслу. Он может найти текст про ranking или retrieval, даже если там не повторяется точная формулировка вопроса.",
     technical:
@@ -951,15 +1014,15 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     debug: "Смотреть `vectorCount`, `vectorRank`, `vectorScore` и source `origin=vector/hybrid`.",
   },
   {
-    title: "3. Lexical search ищет точные термины",
+    title: "5. Lexical search ищет точные термины",
     plain:
       "Postgres FTS ищет слова вроде `RRF`, `rank`, `fusion`. Это важно для технических терминов и названий полей.",
     technical:
-      "searchDocumentsLexical строит strict/relaxed tsquery, ранжирует документы и затем chunk-level overlap выбирает подходящие фрагменты.",
+      "searchDocumentChunksLexical ищет в таблице `document_chunks` используя переписанный запрос.",
     debug: "Смотреть `lexicalCount`, `lexicalRank`, `lexicalScore`.",
   },
   {
-    title: "4. RRF объединяет два списка",
+    title: "6. RRF объединяет два списка",
     plain:
       "Если chunk высоко и в semantic, и в lexical поиске, он получает сильный сигнал. Мы не складываем raw scores напрямую, потому что шкалы разные.",
     technical:
@@ -967,7 +1030,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     debug: "Смотреть `origin=hybrid` и `rrfScore`. `rrfScore=1.000` означает лучший возможный fusion signal.",
   },
   {
-    title: "5. Local rerank уточняет порядок",
+    title: "7. Local rerank уточняет порядок",
     plain:
       "После RRF система чуть повышает chunk-и, где есть слова вопроса, совпадение в title/section или точная фраза.",
     technical:
@@ -975,7 +1038,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     debug: "Смотреть `finalScore`: это score после всех retrieval/rerank поправок.",
   },
   {
-    title: "6. Decision policy выбирает answer или decline",
+    title: "8. Decision policy выбирает answer или decline",
     plain:
       "Если лучший source достаточно сильный, система отвечает. Если evidence слабый, система честно говорит, что не знает.",
     technical:
@@ -983,19 +1046,19 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     debug: "Смотреть `decision`, `bestScore`, `domainEvidence`, `guardrailReason`.",
   },
   {
-    title: "7. LLM получает grounded prompt",
+    title: "9. LLM получает grounded prompt",
     plain:
-      "Модель не получает всю базу знаний. Она получает только top-K chunks, выбранные retrieval pipeline.",
+      "Модель получает только top-K chunks. Инструкции уходят в Ollama `system`, контекст и вопрос — в `prompt`. UI рендерит ответ как markdown.",
     technical:
-      "buildRagPrompt собирает question + contextChunks, streamLLM вызывает Ollama `llama3` со streaming.",
-    debug: "Смотреть `sources`: именно они стали grounding-контекстом.",
+      "buildRagPrompt возвращает `{ system, prompt }`. Инструкции и mode policy в system, документы и вопрос в prompt с суффиксом `Ответ:`. streamLLM стримит через preamble filter.",
+    debug: "Смотреть `sources` (grounding) и `debug.promptVersion` (версия prompt-а).",
   },
   {
-    title: "8. UI показывает ответ и сохраняет историю",
+    title: "10. UI показывает ответ и сохраняет историю",
     plain:
-      "Пользователь видит streaming answer, sources, timing и debug. Потом этот ответ можно открыть из history.",
+      "Пользователь видит streaming answer в markdown, sources, timing и debug. Потом этот ответ можно открыть из history.",
     technical:
-      "Assistant message сохраняет answer, sources, timing и debug JSON в Postgres, включая версию prompt-а и generation options.",
+      "Assistant message сохраняет answer, sources, timing и debug JSON в Postgres, включая `promptVersion` и `generationOptions`.",
     debug: "Если прошлый ответ выглядит странно, history сохраняет debug для повторного анализа.",
   },
 ];
