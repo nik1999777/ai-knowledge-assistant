@@ -3,9 +3,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
-import { AppHeader } from "../../shared/components/AppHeader";
+import { AppShell } from "../../shared/components/AppShell";
 import { ErrorCard } from "../../shared/components/ErrorCard";
-import { Layout } from "../../shared/components/Layout";
 import { useDocumentDetailPage } from "./useDocumentDetailPage";
 
 export function DocumentDetailPage() {
@@ -25,9 +24,8 @@ export function DocumentDetailPage() {
   }, [activeChunkIndex, data]);
 
   return (
-    <Layout>
-      <AppHeader />
-
+    <AppShell scrollable>
+      <PageContent>
       <BackLink to="/">← Назад к ассистенту</BackLink>
 
       {isLoading && <InfoCard>Загружаю документ...</InfoCard>}
@@ -171,9 +169,17 @@ export function DocumentDetailPage() {
           </SideCard>
         </PageGrid>
       )}
-    </Layout>
+      </PageContent>
+    </AppShell>
   );
 }
+
+const PageContent = styled.div`
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+`;
 
 const BackLink = styled(Link)`
   display: inline-block;

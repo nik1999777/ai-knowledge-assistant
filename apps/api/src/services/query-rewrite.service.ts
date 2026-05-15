@@ -1,20 +1,28 @@
 import { env } from "../config/env.js";
 import { postOllamaJson } from "../clients/ollama.client.js";
 
-const PROMPT = (question: string) =>
-  `Extract 3-7 key search terms from the question below for database retrieval.
+const PROMPT = (question: string, previousQuestion?: string) => {
+  const context = previousQuestion
+    ? `Previous question: ${previousQuestion}\n`
+    : "";
+  return `Extract 3-7 key search terms from the question below for database retrieval.
+If the question references something from the previous question (e.g. "it", "this", "that"), resolve the reference and include those terms.
 Return ONLY the terms separated by spaces. No explanations, no punctuation, no numbering.
 
-Question: ${question}
+${context}Question: ${question}
 Terms:`;
+};
 
-export async function rewriteQueryForSearch(question: string): Promise<string> {
+export async function rewriteQueryForSearch(
+  question: string,
+  previousQuestion?: string,
+): Promise<string> {
   try {
     const data = await postOllamaJson<{ response: string }>(
       "/api/generate",
       {
         model: env.OLLAMA_LLM_MODEL,
-        prompt: PROMPT(question),
+        prompt: PROMPT(question, previousQuestion),
         stream: false,
         options: {
           temperature: 0,

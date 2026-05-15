@@ -3,6 +3,7 @@ import styled from "styled-components";
 import { ChatHistory } from "../../features/chat/components/ChatHistory";
 import { ChatPanel } from "../../features/chat/components/ChatPanel";
 import { ChatSidebar } from "../../features/chat/components/ChatSidebar";
+import { AppShell } from "../../shared/components/AppShell";
 import { EmptyState } from "../../shared/components/EmptyState";
 import { ErrorCard } from "../../shared/components/ErrorCard";
 import { useHomePage } from "./useHomePage";
@@ -96,99 +97,58 @@ export function HomePage() {
     chat.loadingOlder,
   ]);
 
+  const sessions = (
+    <ChatSidebar
+      activeSessionId={chat.activeSessionId}
+      sessions={chat.sessions}
+      sessionsLoading={chat.sessionsLoading}
+      deletingSession={chat.deletingSession}
+      onDeleteSession={chat.handleDeleteSession}
+      onSessionSelect={chat.setActiveSessionId}
+    />
+  );
+
   return (
-    <Page>
-      <PageShell>
-        <Workspace>
-          <ChatSidebar
-            activeSessionId={chat.activeSessionId}
-            sessions={chat.sessions}
-            sessionsLoading={chat.sessionsLoading}
+    <AppShell
+      sidebarContent={sessions}
+      onNewChat={chat.handleCreateSession}
+      newChatLoading={chat.loading}
+    >
+      {pageError && <ErrorCard message={pageError} />}
+
+      <ChatShell>
+        {chat.hasOlder || chat.loadingOlder ? (
+          <LoadMoreHint>
+            {chat.loadingOlder
+              ? "Загружаю более ранние сообщения..."
+              : "Прокрутите вверх, чтобы загрузить более ранние сообщения."}
+          </LoadMoreHint>
+        ) : null}
+
+        <HistoryViewport ref={historyViewportRef}>
+          {chat.history.length === 0 && !chat.loading && !pageError ? (
+            <EmptyWrap>
+              <EmptyState />
+            </EmptyWrap>
+          ) : (
+            <ChatHistory exchanges={chat.history} />
+          )}
+        </HistoryViewport>
+
+        <ComposerDock>
+          <ChatPanel
+            answerMode={chat.answerMode}
+            question={chat.question}
             loading={chat.loading}
-            deletingSession={chat.deletingSession}
-            onCreateSession={chat.handleCreateSession}
-            onDeleteSession={chat.handleDeleteSession}
-            onSessionSelect={chat.setActiveSessionId}
+            onAnswerModeChange={chat.setAnswerMode}
+            onQuestionChange={chat.setQuestion}
+            onSubmit={chat.handleAsk}
           />
-
-          <MainColumn>
-            {pageError && <ErrorCard message={pageError} />}
-
-            <ChatShell>
-              {chat.hasOlder || chat.loadingOlder ? (
-                <LoadMoreHint>
-                  {chat.loadingOlder
-                    ? "Загружаю более ранние сообщения..."
-                    : "Прокрутите вверх, чтобы загрузить более ранние сообщения."}
-                </LoadMoreHint>
-              ) : null}
-
-              <HistoryViewport ref={historyViewportRef}>
-                {chat.history.length === 0 && !chat.loading && !pageError ? (
-                  <EmptyWrap>
-                    <EmptyState />
-                  </EmptyWrap>
-                ) : (
-                  <ChatHistory exchanges={chat.history} />
-                )}
-              </HistoryViewport>
-
-              <ComposerDock>
-                <ChatPanel
-                  answerMode={chat.answerMode}
-                  question={chat.question}
-                  loading={chat.loading}
-                  onAnswerModeChange={chat.setAnswerMode}
-                  onQuestionChange={chat.setQuestion}
-                  onSubmit={chat.handleAsk}
-                />
-              </ComposerDock>
-            </ChatShell>
-          </MainColumn>
-        </Workspace>
-      </PageShell>
-
-    </Page>
+        </ComposerDock>
+      </ChatShell>
+    </AppShell>
   );
 }
-
-const Page = styled.div`
-  height: 100vh;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top left, var(--bg-page-accent) 0%, transparent 28%),
-    linear-gradient(180deg, #fcfcfd 0%, var(--bg-page) 100%);
-  color: var(--text-primary);
-  padding: 10px;
-`;
-
-const PageShell = styled.div`
-  height: 100%;
-  min-height: 0;
-`;
-
-const Workspace = styled.div`
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 12px;
-  align-items: stretch;
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-
-  @media (max-width: 1080px) {
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-`;
-
-const MainColumn = styled.div`
-  min-width: 0;
-  display: grid;
-  min-height: 0;
-  overflow: hidden;
-`;
 
 const ChatShell = styled.div`
   display: flex;

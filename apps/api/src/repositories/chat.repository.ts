@@ -161,6 +161,18 @@ export async function getChatMessagesPageBySessionId(
   };
 }
 
+export async function getRecentChatMessages(sessionId: string, limit: number) {
+  const result = await pool.query<Pick<ChatMessageRow, "role" | "content">>(
+    `SELECT role, content
+     FROM chat_messages
+     WHERE session_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [sessionId, limit],
+  );
+  return result.rows.reverse() as Array<{ role: "user" | "assistant"; content: string }>;
+}
+
 export async function deleteChatSession(sessionId: string) {
   await getChatSessionById(sessionId);
   await pool.query("DELETE FROM chat_sessions WHERE id = $1", [sessionId]);

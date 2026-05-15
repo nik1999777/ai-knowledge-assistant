@@ -14,6 +14,7 @@ import {
 import {
   RAG_PROMPT_VERSION,
   buildRagPrompt,
+  type ConversationTurn,
   type RagAnswerMode,
 } from "../../services/prompt.service.js";
 import { measureTime } from "../../utils/timing.js";
@@ -59,11 +60,12 @@ type RagChatContext = {
 export async function streamChatWithKnowledgeBase(
   input: ChatInput,
   onChunk: StreamChunkHandler,
-  options: { documentScope?: DocumentScope } = {},
+  options: { documentScope?: DocumentScope; history?: ConversationTurn[] } = {},
 ): Promise<{ answer: string; meta: Omit<ChatStreamMeta, "sessionId"> }> {
   const totalStart = performance.now();
   const context = await buildRagChatContext(input, {
     documentScope: options.documentScope ?? "user",
+    previousQuestion: options.history?.[options.history.length - 1]?.question,
   });
   const answerMode: RagAnswerMode = input.answerMode ?? "balanced";
 
@@ -107,7 +109,7 @@ export async function streamChatWithKnowledgeBase(
     };
   }
 
-  const ragPrompt = buildRagPrompt(input.question, context.contextChunks, answerMode);
+  const ragPrompt = buildRagPrompt(input.question, context.contextChunks, answerMode, options.history);
   const llmStart = performance.now();
   let answer = "";
   const filteredOnChunk = createPreambleFilter(onChunk);
@@ -254,10 +256,10 @@ function analyzeAnswerSupport(answer: string, sources: RagSource[]) {
 
 async function buildRagChatContext(
   input: ChatInput,
-  options: { documentScope: DocumentScope },
+  options: { documentScope: DocumentScope; previousQuestion?: string },
 ): Promise<RagChatContext> {
   const { result: searchQuery, ms: rewriteMs } = await measureTime(() =>
-    rewriteQueryForSearch(input.question),
+    rewriteQueryForSearch(input.question, options.previousQuestion),
   );
 
   const { result: questionEmbedding, ms: embeddingMs } = await measureTime(() =>

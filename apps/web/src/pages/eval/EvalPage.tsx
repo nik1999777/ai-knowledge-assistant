@@ -9,9 +9,8 @@ import type {
   EvalReport,
   EvalTraceItem,
 } from "../../features/eval/types/eval";
-import { AppHeader } from "../../shared/components/AppHeader";
+import { AppShell } from "../../shared/components/AppShell";
 import { ErrorCard } from "../../shared/components/ErrorCard";
-import { Layout } from "../../shared/components/Layout";
 
 export function EvalPage() {
   const [reportMode, setReportMode] = useState<EvalReportMode>("seed");
@@ -31,9 +30,8 @@ export function EvalPage() {
   );
 
   return (
-    <Layout>
-      <AppHeader />
-
+    <AppShell scrollable>
+      <PageContent>
       <HeroCard>
         <Eyebrow>RAG Eval</Eyebrow>
         <Title>Качество retrieval и decision policy</Title>
@@ -237,7 +235,8 @@ export function EvalPage() {
       ) : null}
 
       {matrixReport ? <ModeMatrixReportView report={matrixReport} /> : null}
-    </Layout>
+      </PageContent>
+    </AppShell>
   );
 }
 
@@ -445,6 +444,13 @@ const TRACE_STAGES: Array<{
   { key: "reranked", label: "Rerank" },
   { key: "final", label: "Final" },
 ];
+
+const PageContent = styled.div`
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+`;
 
 const HeroCard = styled.section`
   background: var(--surface);

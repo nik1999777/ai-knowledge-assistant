@@ -110,31 +110,6 @@ const ModeRow = styled.div`
   background: rgba(248, 250, 252, 0.9);
 `;
 
-const ModeItem = styled.div`
-  position: relative;
-  min-width: 0;
-`;
-
-const ModeButton = styled.button<{ $active: boolean }>`
-  width: 100%;
-  min-height: 30px;
-  border: 0;
-  border-radius: 9px;
-  background: ${({ $active }) => ($active ? "var(--surface)" : "transparent")};
-  color: ${({ $active }) =>
-    $active ? "var(--text-primary)" : "var(--text-secondary)"};
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: ${({ $active }) =>
-    $active ? "0 1px 5px rgba(15, 23, 42, 0.08)" : "none"};
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-`;
-
 const ModeTooltip = styled.span`
   position: absolute;
   left: 50%;
@@ -161,13 +136,6 @@ const ModeTooltip = styled.span`
     transform 140ms ease,
     visibility 140ms ease;
 
-  ${ModeItem}:hover &,
-  ${ModeItem}:focus-within & {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(-50%) translateY(0);
-  }
-
   &::after {
     content: "";
     position: absolute;
@@ -178,6 +146,63 @@ const ModeTooltip = styled.span`
     border-top-color: rgba(15, 23, 42, 0.96);
   }
 `;
+
+const ModeItem = styled.div`
+  position: relative;
+  min-width: 0;
+
+  &:first-child ${ModeTooltip} {
+    left: 0;
+    transform: translateY(2px);
+    &::after {
+      left: 18px;
+      transform: none;
+    }
+  }
+
+  &:last-child ${ModeTooltip} {
+    left: auto;
+    right: 0;
+    transform: translateY(2px);
+    &::after {
+      left: auto;
+      right: 18px;
+      transform: none;
+    }
+  }
+
+  &:hover ${ModeTooltip} {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  &:first-child:hover ${ModeTooltip},
+  &:last-child:hover ${ModeTooltip} {
+    transform: translateY(0);
+  }
+`;
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: ${({ $active }) => ($active ? "var(--surface)" : "transparent")};
+  color: ${({ $active }) =>
+    $active ? "var(--text-primary)" : "var(--text-secondary)"};
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: ${({ $active }) =>
+    $active ? "0 1px 5px rgba(15, 23, 42, 0.08)" : "none"};
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+`;
+
 
 const ComposerRow = styled.div`
   display: grid;

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import styled from "styled-components";
-import { AppHeader } from "../../shared/components/AppHeader";
-import { Layout } from "../../shared/components/Layout";
+import { AppShell } from "../../shared/components/AppShell";
 import {
   API_ROUTES,
   DEBUG_EXAMPLE,
@@ -43,9 +42,8 @@ export function ArchitecturePage() {
     GLOSSARY.find((item) => item.term === selectedTerm) ?? GLOSSARY[0];
 
   return (
-    <Layout>
-      <AppHeader />
-
+    <AppShell scrollable>
+      <PageContent>
       <Intro>
         <Eyebrow>Architecture</Eyebrow>
         <Title>AI Knowledge Assistant: как проект работает внутри</Title>
@@ -585,7 +583,8 @@ finalScore = localRerank(score)`}
           </GlossaryLayout>
         </Section>
       ) : null}
-    </Layout>
+      </PageContent>
+    </AppShell>
   );
 }
 
@@ -633,6 +632,13 @@ function StageDetail({ stage }: { stage: StageInfo }) {
     </DetailWrap>
   );
 }
+
+const PageContent = styled.div`
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+`;
 
 const Intro = styled.section`
   background: var(--surface);

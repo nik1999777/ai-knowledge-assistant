@@ -324,11 +324,14 @@ export const STAGES: StageInfo[] = [
   {
     id: "history",
     title: "7. History",
-    subtitle: "Sessions + saved debug",
-    goal: "Сохранить вопрос, ответ, sources, timing и debug для повторного просмотра.",
+    subtitle: "Sessions + conversation memory + saved debug",
+    goal: "Сохранить вопрос, ответ, sources, timing и debug; передать контекст прошлых обменов в следующий запрос.",
     flow: [
       "Chat session создается или переиспользуется.",
-      "User message и assistant message пишутся в Postgres.",
+      "Перед обработкой вопроса `loadRecentHistory` загружает последние 3 Q&A пары из Postgres.",
+      "История инжектируется в RAG prompt между контекстом документов и текущим вопросом.",
+      "Предыдущий вопрос передается в `rewriteQueryForSearch` для разрешения местоименных ссылок.",
+      "User message и assistant message пишутся в Postgres после ответа.",
       "Assistant message хранит answer, sources, timing и debug JSON, включая `promptVersion`.",
       "Sidebar показывает sessions, а history восстанавливает прошлые ответы.",
     ],
@@ -913,7 +916,6 @@ export const KNOWN_LIMITATIONS = [
   "Rerank локальный, не cross-encoder.",
   "Нет observability dashboard и persistent tracing.",
   "Нет export/import knowledge base.",
-  "Tooltip для кнопки 'Strict' обрезается на левом краю (known UI bug).",
 ];
 
 export const ROADMAP_ITEMS = [

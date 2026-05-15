@@ -82,9 +82,11 @@ can fail with `crypto.hash is not a function`.
 
 ### Chat / RAG
 
-1. **Query rewriting** — `rewriteQueryForSearch(question)` calls Ollama with
+1. **Query rewriting** — `rewriteQueryForSearch(question, previousQuestion?)` calls Ollama with
    `temperature=0, num_predict=40` to extract 3–7 key search terms.
-   Falls back to original question on any error. Timing stored as `rewriteMs`.
+   If a previous question exists in the session, it is passed as context so the rewriter
+   can resolve follow-up references ("it", "this", "that"). Falls back to original question
+   on any error. Timing stored as `rewriteMs`.
 2. **Embedding** — rewritten query is embedded with `search_query:` prefix
    (asymmetric: different prefix than document embeddings).
 3. **Vector search** — Qdrant returns top-K candidates.
@@ -95,8 +97,8 @@ can fail with `crypto.hash is not a function`.
 7. **Decision policy** — checks `bestScore`, `domainEvidence`, `declineThreshold`,
    `answerThreshold`. Declines without calling LLM if evidence is weak.
 8. **Generation** — Ollama receives system prompt (rules + mode policy) and
-   user prompt (context + question + "Ответ:") as separate parameters. Streams
-   via SSE. Preamble filter strips any echoed instruction headers from stream.
+   user prompt (context + conversation history + question + "Ответ:") as separate
+   parameters. Streams via SSE. Preamble filter strips any echoed instruction headers.
 9. **Post-processing** — `stripAnswerPreamble` + `normalizeDeclineAnswer`.
 10. Answer, sources, timing, debug saved to Postgres chat history.
 
@@ -126,6 +128,9 @@ precision by removing conversational noise.
 - Falls back to original question on any error
 - `searchQuery` (rewritten) is stored in `debug.searchQuery`
 - Visible in the frontend debug panel
+- Accepts optional `previousQuestion` — if the current question references
+  something from the previous turn ("it", "this", "that"), the rewriter resolves
+  the reference before extracting terms.
 
 ## Prompt Architecture
 
@@ -135,8 +140,10 @@ Instructions and context are sent as **separate** Ollama parameters:
 
 ```
 system: <rules + mode policy>    ← model never echoes this
-prompt: Документы:\n{context}\n\nВопрос: {question}\n\nОтвет:
+prompt: Документы:\n{context}\n\nИстория диалога:\nПользователь: ...\nАссистент: ...\n\nВопрос: {question}\n\nОтвет:
 ```
+
+History section is omitted when there are no prior turns.
 
 This prevents the model from echoing "БАЗОВЫЙ КОНТРАКТ / РЕЖИМ" headers in
 the answer. `stripAnswerPreamble` + `createPreambleFilter` remain as fallback.
@@ -150,6 +157,24 @@ Answer modes:
 - `balanced`: grounded partial-answer; state what is present and what is missing.
 - `tutor`: "По документам:" from context, then "Общее пояснение:" from general
   knowledge only if context is at least partially related.
+
+## Conversation Memory
+
+Each chat session maintains conversation context across turns (like Claude/ChatGPT).
+
+Pipeline:
+1. Before handling a question, `loadRecentHistory(sessionId, maxTurns=3)` fetches
+   the last 3 Q&A pairs from `chat_messages` (6 rows DESC, then reversed).
+2. History is injected into the RAG prompt between the documents context and the
+   current question (see Prompt Architecture above).
+3. The previous question is also forwarded to `rewriteQueryForSearch` so pronoun
+   references ("it", "this") can be resolved before retrieval.
+
+Key files:
+- `apps/api/src/modules/chat/chat-history.service.ts` — `loadRecentHistory`
+- `apps/api/src/services/prompt.service.ts` — `buildRagPrompt` with `history`
+- `apps/api/src/services/query-rewrite.service.ts` — `rewriteQueryForSearch` with `previousQuestion`
+- `apps/api/src/repositories/chat.repository.ts` — `getRecentChatMessages`
 
 ## Generation Options
 
@@ -248,6 +273,16 @@ Mode Matrix (last run on v7):
 |----------|----------|----|----|---------|
 | balanced | 0.938    | 0  | 1  | 31.3%   |
 
+## Navigation Layout
+
+All pages share a persistent sidebar via `AppShell` + `AppSidebar`:
+
+- `apps/web/src/shared/components/AppShell.tsx` — grid layout (`280px sidebar + content`)
+- `apps/web/src/shared/components/AppSidebar.tsx` — brand, "Новый чат" button, nav links
+  with SVG icons (Chat, Documents, Architecture, Eval), optional `children` slot
+- Pages pass `sidebarContent` (e.g., sessions list) and `onNewChat` to `AppShell`
+- Non-chat pages use `<AppShell scrollable>` with a `PageContent` wrapper
+
 ## Architecture UI
 
 The `/architecture` page is an interactive project guide.
@@ -274,29 +309,22 @@ chunks, and eval source snapshots. Not yet answer-level citations.
 - Rerank is local, not cross-encoder-based.
 - Generated eval is deterministic/extractive, not LLM-authored.
 - No observability dashboard.
-- Tooltip for "Strict" answer mode button is clipped on the left edge (known UI bug,
-  fix pending).
 
 ## Suggested Next Engineering Steps
 
-1. Fix tooltip clipping for "Strict" mode button in `ChatPanel.tsx`.
-   Use CSS `:first-child` / `:last-child` on `ModeItem` to anchor tooltip
-   left/right instead of centering. Requires declaring `ModeTooltip` before
-   `ModeItem` in the file to avoid circular styled-component reference.
-
-2. Improve eval quality after v7 prompt refactor.
+1. Improve eval quality after v7 prompt refactor.
    The fn=1 regression (seed-014, score=0.518, policy=false, model=true) should
    be investigated — it answers when it should decline. Check if system/prompt
    split affected the balanced mode grounding behavior.
 
-3. Answer-level citations.
+2. Answer-level citations.
    Chunk spans exist. Next: bind generated claims to evidence spans.
 
-4. Better chunking / cross-encoder reranker.
+3. Better chunking / cross-encoder reranker.
 
-5. Auth / user ownership.
+4. Auth / user ownership.
 
-6. Observability dashboard.
+5. Observability dashboard.
 
 ## Git Workflow Preference
 

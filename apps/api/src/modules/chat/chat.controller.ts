@@ -12,6 +12,7 @@ import {
   ensureChatSession,
   getChatSessionDetail,
   getChatSessions,
+  loadRecentHistory,
   persistChatExchange,
   removeChatSession,
 } from "./chat-history.service.js";
@@ -46,9 +47,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
 
     try {
       const session = await ensureChatSession(body.question, body.sessionId);
+      const history = await loadRecentHistory(session.id);
       const result = await streamChatWithKnowledgeBase(body, (chunk) => {
         stream.send("chunk", { text: chunk });
-      });
+      }, { history });
 
       const meta = {
         ...result.meta,

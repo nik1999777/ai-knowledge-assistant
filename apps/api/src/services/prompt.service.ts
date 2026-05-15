@@ -7,10 +7,16 @@ export type RagPrompt = {
   prompt: string;
 };
 
+export type ConversationTurn = {
+  question: string;
+  answer: string;
+};
+
 export function buildRagPrompt(
   question: string,
   contextChunks: string[],
   answerMode: RagAnswerMode = "balanced",
+  history: ConversationTurn[] = [],
 ): RagPrompt {
   const context = contextChunks
     .map((chunk, index) => `Фрагмент ${index + 1}:\n${chunk}`)
@@ -18,7 +24,19 @@ export function buildRagPrompt(
 
   const system = buildSystemInstructions(answerMode);
 
-  const prompt = `Документы:\n${context}\n\nВопрос: ${question}\n\nОтвет:`;
+  let historySection = "";
+  if (history.length > 0) {
+    const turns = history
+      .map((turn) => {
+        const truncatedAnswer =
+          turn.answer.length > 300 ? `${turn.answer.slice(0, 297)}...` : turn.answer;
+        return `Пользователь: ${turn.question}\nАссистент: ${truncatedAnswer}`;
+      })
+      .join("\n\n");
+    historySection = `\n\nИстория диалога:\n${turns}`;
+  }
+
+  const prompt = `Документы:\n${context}${historySection}\n\nВопрос: ${question}\n\nОтвет:`;
 
   return { system, prompt };
 }

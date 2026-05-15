@@ -3,10 +3,12 @@ import {
   deleteChatSession,
   getChatMessagesPageBySessionId,
   getChatSessionById,
+  getRecentChatMessages,
   listChatSessions,
   saveChatExchange,
 } from "../../repositories/chat.repository.js";
 
+import type { ConversationTurn } from "../../services/prompt.service.js";
 import type {
   ChatExchangeRecord,
   ChatSessionDetailResponse,
@@ -58,6 +60,25 @@ export async function ensureChatSession(question: string, sessionId?: string) {
   }
 
   return createChatSession(buildSessionTitle(question));
+}
+
+export async function loadRecentHistory(
+  sessionId: string,
+  maxTurns = 3,
+): Promise<ConversationTurn[]> {
+  const messages = await getRecentChatMessages(sessionId, maxTurns * 2);
+  const turns: ConversationTurn[] = [];
+
+  for (let i = 0; i < messages.length - 1; i++) {
+    const msg = messages[i];
+    const next = messages[i + 1];
+    if (msg.role === "user" && next.role === "assistant") {
+      turns.push({ question: msg.content, answer: next.content });
+      i++;
+    }
+  }
+
+  return turns;
 }
 
 export async function persistChatExchange(

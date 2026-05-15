@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../app/queryKeys";
 import {
@@ -22,6 +22,7 @@ export function useChatHistory() {
   const [activeSessionId, setActiveSessionId] = useState<string>();
   const [initializedLatestSession, setInitializedLatestSession] = useState(false);
   const [oldestLoadedPage, setOldestLoadedPage] = useState(1);
+  const loadedSessionRef = useRef<string | undefined>(undefined);
   const [pagination, setPagination] = useState<{
     page: number;
     pageSize: number;
@@ -82,6 +83,7 @@ export function useChatHistory() {
   useEffect(() => {
     if (loading || !activeSessionId) {
       if (!activeSessionId) {
+        loadedSessionRef.current = undefined;
         setHistory([]);
         setPagination(undefined);
         setOldestLoadedPage(1);
@@ -89,6 +91,11 @@ export function useChatHistory() {
       return;
     }
 
+    if (loadedSessionRef.current === activeSessionId) {
+      return;
+    }
+
+    loadedSessionRef.current = activeSessionId;
     let isCancelled = false;
     const sessionId = activeSessionId;
 
