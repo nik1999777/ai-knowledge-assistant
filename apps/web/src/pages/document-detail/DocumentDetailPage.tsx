@@ -7,21 +7,29 @@ import { AppShell } from "../../shared/components/AppShell";
 import { ErrorCard } from "../../shared/components/ErrorCard";
 import { useDocumentDetailPage } from "./useDocumentDetailPage";
 
+const CHUNK_PREVIEW_LEN = 140;
+
 export function DocumentDetailPage() {
   const { activeChunkIndex, activeSnippet, data, isLoading, error, formatDate } =
     useDocumentDetailPage();
-  const [textView, setTextView] = useState<"readable" | "indexed" | "original">(
-    "readable",
-  );
+  const [textView, setTextView] = useState<"readable" | "indexed" | "original">("readable");
+  const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!data || activeChunkIndex === null) {
-      return;
-    }
-
+    if (!data || activeChunkIndex === null) return;
+    setExpandedChunks((prev) => new Set([...prev, activeChunkIndex]));
     const element = document.getElementById(`chunk-${activeChunkIndex}`);
     element?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeChunkIndex, data]);
+
+  function toggleChunk(index: number) {
+    setExpandedChunks((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
 
   return (
     <AppShell scrollable>
@@ -126,31 +134,46 @@ export function DocumentDetailPage() {
             </ContentSection>
 
             <ContentSection>
-              <SectionTitle>Chunks</SectionTitle>
+              <SectionTitle>Chunks ({data.chunks.length})</SectionTitle>
               <ChunksGrid>
-                {data.chunks.map((chunk) => (
-                  <ChunkCard
-                    id={`chunk-${chunk.chunkIndex}`}
-                    key={chunk.chunkIndex}
-                    $active={chunk.chunkIndex === activeChunkIndex}
-                  >
-                    <ChunkHeader>
-                      <ChunkTitle>Chunk {chunk.chunkIndex}</ChunkTitle>
-                      <ChunkMeta>
-                        {formatChunkSpan(chunk.startOffset, chunk.endOffset)}
-                      </ChunkMeta>
-                      {chunk.chunkIndex === activeChunkIndex ? (
-                        <ChunkBadge>Referenced in chat</ChunkBadge>
-                      ) : null}
-                    </ChunkHeader>
-                    <ChunkText>
-                      {renderHighlightedChunk(
-                        chunk.text,
-                        chunk.chunkIndex === activeChunkIndex ? activeSnippet : null,
+                {data.chunks.map((chunk) => {
+                  const isActive = chunk.chunkIndex === activeChunkIndex;
+                  const isExpanded = expandedChunks.has(chunk.chunkIndex);
+                  const preview = chunk.text.length > CHUNK_PREVIEW_LEN
+                    ? chunk.text.slice(0, CHUNK_PREVIEW_LEN).trimEnd() + "…"
+                    : chunk.text;
+
+                  return (
+                    <ChunkCard
+                      id={`chunk-${chunk.chunkIndex}`}
+                      key={chunk.chunkIndex}
+                      $active={isActive}
+                    >
+                      <ChunkHeader onClick={() => toggleChunk(chunk.chunkIndex)}>
+                        <ChunkHeaderLeft>
+                          <ChunkToggle>{isExpanded ? "▼" : "▶"}</ChunkToggle>
+                          <ChunkTitle>Chunk {chunk.chunkIndex}</ChunkTitle>
+                          {chunk.section ? <ChunkSection>{chunk.section}</ChunkSection> : null}
+                        </ChunkHeaderLeft>
+                        <ChunkHeaderRight>
+                          <ChunkMeta>{formatChunkSpan(chunk.startOffset, chunk.endOffset)}</ChunkMeta>
+                          {isActive ? <ChunkBadge>Referenced in chat</ChunkBadge> : null}
+                        </ChunkHeaderRight>
+                      </ChunkHeader>
+
+                      {isExpanded ? (
+                        <ChunkText>
+                          {renderHighlightedChunk(
+                            chunk.text,
+                            isActive ? activeSnippet : null,
+                          )}
+                        </ChunkText>
+                      ) : (
+                        <ChunkPreview>{preview}</ChunkPreview>
                       )}
-                    </ChunkText>
-                  </ChunkCard>
-                ))}
+                    </ChunkCard>
+                  );
+                })}
               </ChunksGrid>
             </ContentSection>
           </MainCard>
@@ -491,19 +514,60 @@ const ChunkHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
+  cursor: pointer;
+  user-select: none;
+`;
+
+const ChunkHeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+`;
+
+const ChunkHeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+`;
+
+const ChunkToggle = styled.span`
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 `;
 
 const ChunkTitle = styled.div`
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+  white-space: nowrap;
+`;
+
+const ChunkSection = styled.div`
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const ChunkMeta = styled.div`
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+`;
+
+const ChunkPreview = styled.p`
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 `;
 
 const ChunkBadge = styled.span`
