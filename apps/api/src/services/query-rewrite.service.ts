@@ -1,17 +1,31 @@
 import { env } from "../config/env.js";
 import { postOllamaJson } from "../clients/ollama.client.js";
 
-const PROMPT = (question: string, previousQuestion?: string) => {
-  const context = previousQuestion
-    ? `Previous question: ${previousQuestion}\n`
-    : "";
-  return `Extract 3-7 key search terms from the question below for database retrieval.
-If the question contains pronouns or references (e.g. "it", "this", "that", "он", "она", "оно", "они", "это", "тот", "та", "то", "его", "её", "их"), resolve them using the previous question and replace with the actual subject.
-Return ONLY the terms separated by spaces. No explanations, no punctuation, no numbering.
+const PROMPT_WITH_HISTORY = (question: string, previousQuestion: string) =>
+  `Rewrite the follow-up question as a standalone search query by replacing all pronouns and references with the actual subject from the previous question. Then output only 3-7 key search terms separated by spaces.
 
-${context}Question: ${question}
+Examples:
+Previous: Что такое PyTorch?
+Follow-up: А где он используется?
+Terms: PyTorch применение использование области
+
+Previous: Расскажи про React
+Follow-up: Каковы его преимущества?
+Terms: React преимущества возможности плюсы
+
+Previous: Что такое gradient descent?
+Follow-up: Как это работает?
+Terms: gradient descent алгоритм работа шаги
+
+Previous: ${previousQuestion}
+Follow-up: ${question}
 Terms:`;
-};
+
+const PROMPT_STANDALONE = (question: string) =>
+  `Extract 3-7 key search terms from the question for database retrieval. Return ONLY the terms separated by spaces.
+
+Question: ${question}
+Terms:`;
 
 export async function rewriteQueryForSearch(
   question: string,
@@ -22,7 +36,9 @@ export async function rewriteQueryForSearch(
       "/api/generate",
       {
         model: env.OLLAMA_LLM_MODEL,
-        prompt: PROMPT(question, previousQuestion),
+        prompt: previousQuestion
+          ? PROMPT_WITH_HISTORY(question, previousQuestion)
+          : PROMPT_STANDALONE(question),
         stream: false,
         options: {
           temperature: 0,
