@@ -337,7 +337,11 @@ const WarningItem = styled.li`
   line-height: 1.6;
 `;
 
-const ContentSection = styled.section``;
+const ContentSection = styled.section`
+  & + & {
+    margin-top: 32px;
+  }
+`;
 
 const SectionHeader = styled.div`
   display: flex;
