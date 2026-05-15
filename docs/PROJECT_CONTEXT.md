@@ -23,8 +23,9 @@ into the local knowledge base.
 - Backend: Fastify (TypeScript)
 - Metadata / history / FTS: Postgres
 - Vector search: Qdrant
-- Embeddings: Ollama `nomic-embed-text` (asymmetric — see below)
-- Generation: Ollama (model configured via `OLLAMA_LLM_MODEL`)
+- LLM provider: pluggable via `LLM_PROVIDER=ollama|openai` (see Provider Abstraction)
+- Embeddings: `nomic-embed-text` (Ollama) or `text-embedding-3-small` (OpenAI) — asymmetric
+- Generation: configured via `LLM_MODEL` / `OLLAMA_LLM_MODEL` / `OPENAI_LLM_MODEL`
 
 ## Run Commands
 
@@ -119,18 +120,27 @@ using stored chunks from `document_chunks` table.
 
 ## Query Rewriting
 
-Before retrieval, a fast LLM call extracts key search terms from the user's
-natural-language question. This improves both vector embedding quality and FTS
-precision by removing conversational noise.
+Before retrieval, the rewrite service transforms the user's question into a
+search-ready query. Uses `rewriteProvider` which can be configured independently
+from the main LLM provider.
 
 - Service: `apps/api/src/services/query-rewrite.service.ts`
-- Uses `OLLAMA_LLM_MODEL` with `temperature=0, seed=42, num_predict=40`
 - Falls back to original question on any error
 - `searchQuery` (rewritten) is stored in `debug.searchQuery`
 - Visible in the frontend debug panel
-- Accepts optional `previousQuestion` — if the current question references
-  something from the previous turn ("it", "this", "that"), the rewriter resolves
-  the reference before extracting terms.
+
+Two modes depending on conversation context:
+
+**Standalone question** (no history): extracts 3–7 key search terms.
+
+**Follow-up question** (history exists): LangChain-style standalone rewriting.
+Receives the full previous `ConversationTurn` (question + answer, answer
+truncated to 300 chars). Prompts the model to rewrite the follow-up as a
+standalone question that resolves pronoun references ("он", "это", "его" etc.).
+
+Provider for rewriting is configured via:
+- `REWRITE_PROVIDER=ollama|openai` — separate provider from main LLM
+- `REWRITE_MODEL` — optional model override within the rewrite provider
 
 ## Prompt Architecture
 
@@ -167,13 +177,14 @@ Pipeline:
    the last 3 Q&A pairs from `chat_messages` (6 rows DESC, then reversed).
 2. History is injected into the RAG prompt between the documents context and the
    current question (see Prompt Architecture above).
-3. The previous question is also forwarded to `rewriteQueryForSearch` so pronoun
-   references ("it", "this") can be resolved before retrieval.
+3. The full previous `ConversationTurn` (question + answer) is forwarded to
+   `rewriteQueryForSearch` for LangChain-style standalone question rewriting,
+   which resolves pronoun references before retrieval.
 
 Key files:
 - `apps/api/src/modules/chat/chat-history.service.ts` — `loadRecentHistory`
 - `apps/api/src/services/prompt.service.ts` — `buildRagPrompt` with `history`
-- `apps/api/src/services/query-rewrite.service.ts` — `rewriteQueryForSearch` with `previousQuestion`
+- `apps/api/src/services/query-rewrite.service.ts` — `rewriteQueryForSearch` with `previousTurn`
 - `apps/api/src/repositories/chat.repository.ts` — `getRecentChatMessages`
 
 ## Generation Options
@@ -312,10 +323,9 @@ chunks, and eval source snapshots. Not yet answer-level citations.
 
 ## Suggested Next Engineering Steps
 
-1. Improve eval quality after v7 prompt refactor.
-   The fn=1 regression (seed-014, score=0.518, policy=false, model=true) should
-   be investigated — it answers when it should decline. Check if system/prompt
-   split affected the balanced mode grounding behavior.
+1. Investigate fn=1 regression (seed-014, score=0.518, policy=false, model=true).
+   Model answers when it should decline. Check balanced mode grounding after v7
+   system/prompt split.
 
 2. Answer-level citations.
    Chunk spans exist. Next: bind generated claims to evidence spans.
@@ -325,6 +335,43 @@ chunks, and eval source snapshots. Not yet answer-level citations.
 4. Auth / user ownership.
 
 5. Observability dashboard.
+
+6. Python project (parallel portfolio).
+   Job market requires Python/FastAPI/LangChain skills. Consider a separate
+   Python RAG project using FastAPI + LangChain + LangGraph + HuggingFace.
+
+## LLM Provider Abstraction
+
+Provider pattern allows swapping LLM backends without changing business logic.
+
+```
+apps/api/src/providers/
+├── llm.provider.ts      — interface: generate(), stream(), embed(), ping()
+├── ollama.provider.ts   — Ollama implementation
+├── openai.provider.ts   — OpenAI SDK implementation
+└── index.ts             — factory + singletons (llmProvider, rewriteProvider)
+```
+
+Configuration via `.env`:
+
+```bash
+LLM_PROVIDER=ollama           # or openai
+OPENAI_API_KEY=sk-...         # required when LLM_PROVIDER=openai
+OPENAI_LLM_MODEL=gpt-4o-mini  # default
+OPENAI_EMBED_MODEL=text-embedding-3-small
+
+# Optional: separate provider for query rewriting
+REWRITE_PROVIDER=openai       # can differ from LLM_PROVIDER
+REWRITE_MODEL=gpt-4o-mini     # optional model override
+```
+
+Recommended dev setup: `LLM_PROVIDER=ollama` + `REWRITE_PROVIDER=openai` —
+local generation for free, reliable pronoun resolution for ~$0.001/100 queries.
+
+Key singletons:
+- `llmProvider` — used by `llm.service.ts` and `embeddings.service.ts`
+- `rewriteProvider` — used by `query-rewrite.service.ts`; equals `llmProvider`
+  if provider and model match, otherwise a separate instance
 
 ## Git Workflow Preference
 

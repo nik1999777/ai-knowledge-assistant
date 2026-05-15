@@ -233,7 +233,7 @@ export const STAGES: StageInfo[] = [
     subtitle: "Query rewrite → Vector + FTS → RRF → rerank",
     goal: "Найти chunk-и, которые лучше всего отвечают на вопрос. Перед поиском вопрос переписывается в ключевые термины.",
     flow: [
-      "Query rewriting: LLM извлекает 3–7 ключевых search-терминов из вопроса (temperature=0, fast, fallback на оригинал).",
+      "Query rewriting: при follow-up вопросе передает полный предыдущий Q&A (LangChain-style standalone rewriting); для standalone извлекает 3–7 key terms. Использует rewriteProvider (может быть отдельным провайдером от основного LLM).",
       "Переписанный запрос embedируется с префиксом `search_query:` (asymmetric: другой prefix, чем у документов).",
       "Qdrant ищет похожие vectors сразу с filter по `documentScope`.",
       "Postgres FTS ищет lexical matches в таблице `document_chunks` используя переписанный запрос.",
@@ -330,7 +330,7 @@ export const STAGES: StageInfo[] = [
       "Chat session создается или переиспользуется.",
       "Перед обработкой вопроса `loadRecentHistory` загружает последние 3 Q&A пары из Postgres.",
       "История инжектируется в RAG prompt между контекстом документов и текущим вопросом.",
-      "Предыдущий вопрос передается в `rewriteQueryForSearch` для разрешения местоименных ссылок.",
+      "Полный предыдущий обмен (вопрос + ответ) передается в `rewriteQueryForSearch` для LangChain-style разрешения местоименных ссылок.",
       "User message и assistant message пишутся в Postgres после ответа.",
       "Assistant message хранит answer, sources, timing и debug JSON, включая `promptVersion`.",
       "Sidebar показывает sessions, а history восстанавливает прошлые ответы.",
@@ -474,7 +474,7 @@ export const API_ROUTES = [
   ["GET /chat/sessions", "Список chat sessions.", "chat-history.service"],
   ["GET /chat/sessions/:id", "История session с сохраненными sources/debug.", "chat.repository"],
   ["GET /eval/report", "Последний eval report: seed или generated.", "eval-report.controller"],
-  ["GET /ready", "Проверка Postgres, Qdrant и Ollama.", "readiness.service"],
+  ["GET /ready", "Проверка Postgres, Qdrant и активного LLM провайдера (Ollama или OpenAI).", "readiness.service"],
 ];
 
 export const STORAGE_ITEMS = [
@@ -489,9 +489,9 @@ export const STORAGE_ITEMS = [
     fields: ["vector", "docId", "documentScope", "chunkIndex", "section", "startOffset", "endOffset", "text"],
   },
   {
-    title: "Ollama",
-    body: "Локально генерирует embeddings и финальный ответ, без внешнего API.",
-    fields: ["nomic-embed-text", "llama3", "stream=true", "local inference"],
+    title: "LLM Provider (Ollama / OpenAI)",
+    body: "Провайдер абстрагирует генерацию и embeddings за единым интерфейсом. LLM_PROVIDER=ollama — локально, бесплатно. LLM_PROVIDER=openai — через OpenAI API. REWRITE_PROVIDER позволяет использовать разные провайдеры для генерации и query rewriting.",
+    fields: ["LLM_PROVIDER=ollama|openai", "REWRITE_PROVIDER (optional)", "REWRITE_MODEL (optional)", "OllamaProvider", "OpenAIProvider", "LLMProvider interface"],
   },
 ];
 
@@ -506,7 +506,7 @@ export const EVAL_FACTS = [
 ];
 
 export const TROUBLESHOOTING = [
-  ["Ollama не отвечает", "Проверить, что Ollama запущена и модели `nomic-embed-text`/`llama3` доступны."],
+  ["LLM провайдер не отвечает", "При LLM_PROVIDER=ollama: проверить, что Ollama запущена и модели доступны. При LLM_PROVIDER=openai: проверить OPENAI_API_KEY и доступность API."],
   ["Нет retrieval sources", "Проверить ingestion, `documentScope`, Qdrant collection и Postgres `search_vector`."],
   ["Eval внезапно просел", "Смотреть FP/FN cases, source previews, origin, ranks и finalScore."],
   ["Vite warning", "Node 20.10.0 староват для Vite 7; нужен Node 20.19+ или 22.12+."],
@@ -654,11 +654,11 @@ export const GLOSSARY: GlossaryItem[] = [
   },
   {
     term: "Query Rewriting",
-    short: "LLM-шаг перед retrieval: вопрос → ключевые search-термины.",
+    short: "LLM-шаг перед retrieval: вопрос → search-ready запрос.",
     projectMeaning:
-      "Быстрый LLM вызов (temperature=0, num_predict=40) извлекает 3–7 ключевых терминов из пользовательского вопроса. Переписанный запрос используется для embedding и FTS. Оригинальный вопрос сохраняется для rerank и LLM prompt.",
+      "Для standalone вопросов — извлекает 3–7 ключевых терминов. Для follow-up вопросов — LangChain-style: передает полный предыдущий Q&A и перефразирует follow-up как standalone question, разрешая местоимения ('он', 'это'). Использует rewriteProvider — может быть отдельным от основного LLM провайдером (например, REWRITE_PROVIDER=openai для надёжности).",
     example:
-      "Вопрос 'что дает RRF?' → rewritten query 'RRF rank fusion retrieval'. `debug.searchQuery` показывает результат.",
+      "Вопрос 'что дает RRF?' → 'RRF rank fusion retrieval'. Follow-up 'расскажи про его особенность?' после вопроса про PyTorch → 'Какие особенности у PyTorch?'. `debug.searchQuery` показывает результат.",
   },
 ];
 
@@ -697,12 +697,12 @@ export const DESIGN_DECISIONS: DecisionRecord[] = [
     files: ["apps/api/src/repositories/documents.repository.ts", "apps/api/src/clients/qdrant.client.ts"],
   },
   {
-    decision: "Ollama local models",
-    why: "Проект локальный: embeddings и generation работают без внешнего API, ключей и отправки пользовательских документов наружу.",
-    alternatives: "OpenAI/Anthropic API, hosted embeddings, managed inference.",
+    decision: "LLM provider abstraction (Ollama / OpenAI)",
+    why: "Разные задачи требуют разных провайдеров: Ollama для локальной разработки (бесплатно, приватно), OpenAI для надёжного query rewriting и production. LLMProvider interface позволяет переключаться без изменения бизнес-логики.",
+    alternatives: "Только Ollama (hardcoded); только OpenAI; LangChain abstractions.",
     tradeoff:
-      "Локально проще с privacy, но качество/скорость зависит от машины, модели и состояния Ollama.",
-    files: ["apps/api/src/clients/ollama.client.ts", "apps/api/src/services/llm.service.ts"],
+      "Provider pattern добавляет слой абстракции, зато один .env переключает весь стек. REWRITE_PROVIDER позволяет смешивать: Ollama для генерации + OpenAI для rewriting.",
+    files: ["apps/api/src/providers/llm.provider.ts", "apps/api/src/providers/ollama.provider.ts", "apps/api/src/providers/openai.provider.ts", "apps/api/src/providers/index.ts"],
   },
   {
     decision: "Hybrid retrieval",
@@ -900,7 +900,8 @@ export const LIFECYCLES = [
 ];
 
 export const MODULE_BOUNDARIES = [
-  ["clients", "Обертки над внешними системами: Ollama, Qdrant."],
+  ["providers", "LLMProvider интерфейс + OllamaProvider + OpenAIProvider. Переключение через LLM_PROVIDER env var."],
+  ["clients", "Обертки над внешними системами: Qdrant."],
   ["repositories", "Доступ к Postgres и SQL-запросы. Здесь не должно быть UI-логики."],
   ["services", "Бизнес-логика: parsing, chunking, embeddings, prompt, LLM."],
   ["modules", "Use-cases и routes: chat, documents, eval."],
